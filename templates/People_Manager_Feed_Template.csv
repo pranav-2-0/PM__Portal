@@ -1,0 +1,11 @@
+GGID,Email ID,Emp Skills,Unified Grade,PM Sub-practice,SBU Name,PM Region,Reportee Count,Is Active
+30001,john.manager@capgemini.com,Java,C2,DCX-BPM,Cloud SBU,IN,8,Yes
+30002,sarah.leader@capgemini.com,Python,C1,Cloud & Infrastructure,Cloud SBU,IN,5,Yes
+30003,mike.supervisor@capgemini.com,AWS,D1,Data & AI,Tech SBU,US,12,Yes
+30004,emma.head@capgemini.com,SAP,C2,Digital Engineering,Apps SBU,UK,6,Yes
+30005,david.manager@capgemini.com,ServiceNow,D2,DCX-BPM,Cloud SBU,IN,14,Yes
+30006,lisa.lead@capgemini.com,Azure,C1,Cloud & Infrastructure,Cloud SBU,IN,9,Yes
+30007,robert.supervisor@capgemini.com,Machine Learning,D1,Data & AI,Tech SBU,US,11,Yes
+30008,jennifer.manager@capgemini.com,React,C2,Digital Engineering,Apps SBU,UK,7,Yes
+30009,william.lead@capgemini.com,DevOps,D3,Cloud & Infrastructure,Tech SBU,IN,13,Yes
+30010,maria.head@capgemini.com,Data Science,C2,Data & AI,Tech SBU,US,4,Yes

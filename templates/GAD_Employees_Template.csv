@@ -1,0 +1,26 @@
+GGID,Email ID,Emp Skills,Unified Grade,PM GGID,PM Email ID,PM Skills,PM Grade,PM Sub-practice,PM Region,Remarks
+40001,alice.johnson@capgemini.com,Java,B2,30001,john.manager@capgemini.com,Java,C2,DCX-BPM,IN,
+40002,bob.smith@capgemini.com,Python,B1,,,,,DCX-BPM,IN,New Joiner - No PM assigned
+40003,carol.white@capgemini.com,AWS,C1,30003,mike.supervisor@capgemini.com,AWS,D1,Data & AI,US,
+40004,daniel.lee@capgemini.com,Python,B2,30010,maria.head@capgemini.com,Data Science,C2,Data & AI,IN,
+40005,emma.garcia@capgemini.com,JavaScript,B1,30008,jennifer.manager@capgemini.com,React,C2,Digital Engineering,UK,
+40006,frank.miller@capgemini.com,Azure,B2,30006,lisa.lead@capgemini.com,Azure,C1,Cloud & Infrastructure,IN,
+40007,grace.davis@capgemini.com,Machine Learning,C1,30007,robert.supervisor@capgemini.com,Machine Learning,D1,Data & AI,US,
+40008,henry.wilson@capgemini.com,React,B1,,,,,Digital Engineering,IN,New Joiner - No PM assigned
+40009,iris.martinez@capgemini.com,DevOps,B2,30009,william.lead@capgemini.com,DevOps,D3,Cloud & Infrastructure,UK,
+40010,jack.anderson@capgemini.com,ServiceNow,B1,30005,david.manager@capgemini.com,ServiceNow,D2,DCX-BPM,IN,
+40011,kate.thomas@capgemini.com,SAP,B2,30004,emma.head@capgemini.com,SAP,C2,Digital Engineering,UK,
+40012,leo.jackson@capgemini.com,AWS,B1,,,,,Cloud & Infrastructure,IN,New Joiner - No PM assigned
+40013,mary.white@capgemini.com,Python,C1,30002,sarah.leader@capgemini.com,Python,C1,Cloud & Infrastructure,IN,
+40014,nathan.harris@capgemini.com,Java,B2,30001,john.manager@capgemini.com,Java,C2,DCX-BPM,IN,
+40015,olivia.martin@capgemini.com,React,B1,30008,jennifer.manager@capgemini.com,React,C2,Digital Engineering,UK,
+40016,peter.thompson@capgemini.com,DevOps,B2,30009,william.lead@capgemini.com,DevOps,D3,Cloud & Infrastructure,IN,
+40017,quinn.garcia@capgemini.com,Machine Learning,B1,30007,robert.supervisor@capgemini.com,Machine Learning,D1,Data & AI,US,
+40018,rachel.martinez@capgemini.com,Azure,B2,30006,lisa.lead@capgemini.com,Azure,C1,Cloud & Infrastructure,IN,
+40019,samuel.robinson@capgemini.com,ServiceNow,B1,30005,david.manager@capgemini.com,ServiceNow,D2,DCX-BPM,IN,
+40020,tina.clark@capgemini.com,Data Science,C1,30010,maria.head@capgemini.com,Data Science,C2,Data & AI,IN,
+40021,victor.rodriguez@capgemini.com,Java,B1,,,,,DCX-BPM,IN,New Joiner - No PM assigned
+40022,wendy.lewis@capgemini.com,Python,B2,30002,sarah.leader@capgemini.com,Python,C1,Cloud & Infrastructure,IN,
+40023,xavier.lee@capgemini.com,AWS,B1,30003,mike.supervisor@capgemini.com,AWS,D1,Data & AI,US,
+40024,yvonne.walker@capgemini.com,React,B2,30008,jennifer.manager@capgemini.com,React,C2,Digital Engineering,UK,
+40025,zachary.hall@capgemini.com,DevOps,B1,30009,william.lead@capgemini.com,DevOps,D3,Cloud & Infrastructure,IN,
