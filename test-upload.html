@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Upload Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .upload-section {
+            border: 2px solid #0070AD;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+        button {
+            background: #0070AD;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #005a8a;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        input[type="file"] {
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Upload Test - Direct API Call</h1>
+    <p>This tests the upload API directly without React/Redux</p>
+
+    <div class="upload-section">
+        <h2>Upload Bench Report</h2>
+        <input type="file" id="employeesFile" accept=".xlsx,.xls">
+        <button onclick="uploadFile('employees')">Upload Bench Report</button>
+        <div id="employeesResult"></div>
+    </div>
+
+    <div class="upload-section">
+        <h2>Upload Separations</h2>
+        <input type="file" id="separationsFile" accept=".xlsx,.xls">
+        <button onclick="uploadFile('separations')">Upload Separations</button>
+        <div id="separationsResult"></div>
+    </div>
+
+    <script>
+        async function uploadFile(type) {
+            const fileInput = document.getElementById(type + 'File');
+            const resultDiv = document.getElementById(type + 'Result');
+            
+            const file = fileInput.files[0];
+            if (!file) {
+                resultDiv.innerHTML = '<div class="error">Please select a file first!</div>';
+                return;
+            }
+
+            console.log('Uploading:', file.name, 'Size:', file.size, 'Type:', file.type);
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            // Log FormData
+            for (let pair of formData.entries()) {
+                console.log(pair[0] + ':', pair[1]);
+            }
+
+            try {
+                resultDiv.innerHTML = '<div>Uploading...</div>';
+                
+                const response = await fetch(`http://localhost:5000/api/pm/upload/${type}`, {
+                    method: 'POST',
+                    body: formData,
+                    // Don't set Content-Type header - browser will set it with boundary
+                });
+
+                console.log('Response status:', response.status);
+                console.log('Response headers:', [...response.headers.entries()]);
+
+                const data = await response.json();
+                console.log('Response data:', data);
+
+                if (response.ok) {
+                    resultDiv.innerHTML = `
+                        <div class="success">
+                            <strong>Success!</strong><br>
+                            ${data.message}<br>
+                            Count: ${data.count || 'N/A'}<br>
+                            Inserted: ${data.inserted || 'N/A'}
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <div class="error">
+                            <strong>Error!</strong><br>
+                            ${data.error || 'Upload failed'}
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Upload error:', error);
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <strong>Network Error!</strong><br>
+                        ${error.message}<br>
+                        Make sure backend is running on port 5000
+                    </div>
+                `;
+            }
+        }
+    </script>
+</body>
+</html>

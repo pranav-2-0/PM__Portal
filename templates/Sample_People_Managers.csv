@@ -1,0 +1,11 @@
+Employee ID,Name,Email,Practice,CU,Region,Account,Skill,Grade,Reportee Count,Max Capacity,Is Active
+PM001,John Manager,john.manager@capgemini.com,Digital Engineering,CU-Technology,India,Client-TechCorp,Java,C2,5,10,Yes
+PM002,Sarah Williams,sarah.williams@capgemini.com,Digital Engineering,CU-Technology,India,Client-TechCorp,Python,D1,8,15,Yes
+PM003,Michael Chen,michael.chen@capgemini.com,Cloud & Infrastructure,CU-Cloud,India,Client-CloudNet,AWS,D2,10,15,Yes
+PM004,Emily Davis,emily.davis@capgemini.com,Data & AI,CU-Analytics,USA,Client-DataHub,Data Science,C1,3,10,Yes
+PM005,Robert Taylor,robert.taylor@capgemini.com,Digital Engineering,CU-Technology,UK,Client-GlobalTech,JavaScript,D1,7,15,Yes
+PM006,Lisa Anderson,lisa.anderson@capgemini.com,Cloud & Infrastructure,CU-Cloud,India,Client-CloudNet,Azure,C2,4,10,Yes
+PM007,David Martinez,david.martinez@capgemini.com,Data & AI,CU-Analytics,USA,Client-DataHub,Machine Learning,D3,12,15,Yes
+PM008,Jennifer Brown,jennifer.brown@capgemini.com,Digital Engineering,CU-Technology,India,Client-TechCorp,React,C1,2,10,Yes
+PM009,James Wilson,james.wilson@capgemini.com,Cloud & Infrastructure,CU-Cloud,UK,Client-GlobalTech,DevOps,D1,9,15,Yes
+PM010,Patricia Moore,patricia.moore@capgemini.com,Data & AI,CU-Analytics,India,Client-DataHub,Python,C2,6,10,Yes
