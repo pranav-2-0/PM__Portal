@@ -2,15 +2,44 @@ import pool from '../config/database';
 import { isGradeEligible, isGradeGapAllowed } from '../utils/gradeUtils';
 
 export class StatisticsService {
-  async getDashboardStats() {
+  async getDashboardStats(practice?: string) {
     const client = await pool.connect();
     try {
+      const employeeQuery = practice
+        ? 'SELECT COUNT(*) as count FROM employees WHERE status = $1 AND practice = $2'
+        : 'SELECT COUNT(*) as count FROM employees WHERE status = $1';
+      const employeeParams = practice ? ['active', practice] : ['active'];
+
+      const pmQuery = practice
+        ? 'SELECT COUNT(*) as count FROM people_managers WHERE is_active = true AND practice = $1'
+        : 'SELECT COUNT(*) as count FROM people_managers WHERE is_active = true';
+      const pmParams = practice ? [practice] : [];
+
+      const newJoinersQuery = practice
+        ? 'SELECT COUNT(*) as count FROM employees WHERE is_new_joiner = true AND current_pm_id IS NULL AND practice = $1'
+        : 'SELECT COUNT(*) as count FROM employees WHERE is_new_joiner = true AND current_pm_id IS NULL';
+      const newJoinersParams = practice ? [practice] : [];
+
+      const pendingAssignmentsQuery = practice
+        ? `SELECT COUNT(*) as count FROM pm_assignments pa
+           JOIN employees e ON pa.employee_id = e.employee_id
+           WHERE pa.status = $1 AND e.practice = $2`
+        : 'SELECT COUNT(*) as count FROM pm_assignments WHERE status = $1';
+      const pendingAssignmentsParams = practice ? ['pending', practice] : ['pending'];
+
+      const separationsQuery = practice
+        ? `SELECT COUNT(*) as count FROM separation_reports sr
+           JOIN employees e ON sr.employee_id = e.employee_id
+           WHERE sr.status = $1 AND e.practice = $2`
+        : 'SELECT COUNT(*) as count FROM separation_reports WHERE status = $1';
+      const separationsParams = practice ? ['pending', practice] : ['pending'];
+
       const [employees, pms, newJoiners, pendingAssignments, separations] = await Promise.all([
-        client.query('SELECT COUNT(*) as count FROM employees WHERE status = $1', ['active']),
-        client.query('SELECT COUNT(*) as count FROM people_managers WHERE is_active = true'),
-        client.query('SELECT COUNT(*) as count FROM employees WHERE is_new_joiner = true AND current_pm_id IS NULL'),
-        client.query('SELECT COUNT(*) as count FROM pm_assignments WHERE status = $1', ['pending']),
-        client.query('SELECT COUNT(*) as count FROM separation_reports WHERE status = $1', ['pending']),
+        client.query(employeeQuery, employeeParams),
+        client.query(pmQuery, pmParams),
+        client.query(newJoinersQuery, newJoinersParams),
+        client.query(pendingAssignmentsQuery, pendingAssignmentsParams),
+        client.query(separationsQuery, separationsParams),
       ]);
 
       return {
@@ -25,7 +54,14 @@ export class StatisticsService {
     }
   }
 
-  async getPMCapacityReport() {
+  async getPMCapacityReport(practice?: string) {
+    const params: any[] = [];
+    let whereClause = 'WHERE is_active = true';
+    if (practice) {
+      whereClause += ' AND practice = $1';
+      params.push(practice);
+    }
+
     const result = await pool.query(`
       SELECT 
         employee_id,
@@ -37,9 +73,9 @@ export class StatisticsService {
         10 AS spec_capacity_cap,
         ROUND((reportee_count::decimal / 10) * 100, 2) as utilization
       FROM people_managers
-      WHERE is_active = true
+      ${whereClause}
       ORDER BY utilization DESC
-    `);
+    `, params);
     return result.rows;
   }
 
@@ -57,17 +93,25 @@ export class StatisticsService {
     return result.rows;
   }
 
-  async getPracticeDistribution() {
+  async getPracticeDistribution(practice?: string) {
+    const params: any[] = [];
+    let whereClause = 'WHERE status = $1';
+    params.push('active');
+    if (practice) {
+      whereClause += ' AND practice = $2';
+      params.push(practice);
+    }
+
     const result = await pool.query(`
       SELECT 
         practice,
         COUNT(*) as employee_count,
         COUNT(DISTINCT current_pm_id) as pm_count
       FROM employees
-      WHERE status = 'active'
+      ${whereClause}
       GROUP BY practice
       ORDER BY employee_count DESC
-    `);
+    `, params);
     return result.rows;
   }
 
@@ -84,30 +128,46 @@ export class StatisticsService {
     return result.rows;
   }
 
-  async getGradeDistribution() {
+  async getGradeDistribution(practice?: string) {
+    const params: any[] = [];
+    let whereClause = 'WHERE status = $1';
+    params.push('active');
+    if (practice) {
+      whereClause += ' AND practice = $2';
+      params.push(practice);
+    }
+
     const result = await pool.query(`
       SELECT 
         grade,
         COUNT(*) as count
       FROM employees
-      WHERE status = 'active'
+      ${whereClause}
       GROUP BY grade
       ORDER BY grade
-    `);
+    `, params);
     return result.rows;
   }
 
-  async getRegionStats() {
+  async getRegionStats(practice?: string) {
+    const params: any[] = [];
+    let whereClause = 'WHERE status = $1';
+    params.push('active');
+    if (practice) {
+      whereClause += ' AND practice = $2';
+      params.push(practice);
+    }
+
     const result = await pool.query(`
       SELECT 
         region,
         COUNT(*) as employee_count,
         COUNT(CASE WHEN current_pm_id IS NULL THEN 1 END) as without_pm
       FROM employees
-      WHERE status = 'active'
+      ${whereClause}
       GROUP BY region
       ORDER BY employee_count DESC
-    `);
+    `, params);
     return result.rows;
   }
 

@@ -10,6 +10,7 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { authService } from '../services/authService';
+import { useAuth } from '../context/AuthContext';
 import { SORTED_PRACTICES } from '../constants/practices';
 
 // Map practice names to department IDs for backend
@@ -31,14 +32,18 @@ interface Department {
   description: string;
 }
 
+const ROLES = ['Admin', 'Employee', 'Staff'];
+
 export default function Signup() {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     password: '',
     confirmPassword: '',
     department_id: '',
+    role: '',
   });
   const [departments, setDepartments] = useState<Department[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -103,7 +108,7 @@ export default function Signup() {
 
     try {
       // Validate inputs
-      if (!formData.name || !formData.email || !formData.password || !formData.department_id) {
+      if (!formData.name || !formData.email || !formData.password || !formData.department_id || !formData.role) {
         throw new Error('All fields are required');
       }
 
@@ -123,7 +128,12 @@ export default function Signup() {
         email: formData.email,
         password: formData.password,
         department_id: parseInt(formData.department_id),
+        role: formData.role,
       });
+
+      if (response.user) {
+        login(response.user);
+      }
 
       console.log('Signup successful:', response);
 
@@ -249,6 +259,33 @@ export default function Signup() {
                 </select>
               </div>
               {loadingDepts && <p className="text-xs text-gray-500 mt-1">Loading practices...</p>}
+            </div>
+
+            <div>
+              <label htmlFor="role" className="block text-sm font-semibold text-gray-700 mb-2">
+                Role *
+              </label>
+              <div className="relative">
+                <ChevronDown
+                  size={18}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+                />
+                <select
+                  id="role"
+                  name="role"
+                  value={formData.role}
+                  onChange={handleChange}
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors appearance-none bg-white pr-10"
+                  disabled={loading}
+                >
+                  <option value="">Select your role</option>
+                  {ROLES.map((role) => (
+                    <option key={role} value={role}>
+                      {role}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             {/* Password Field */}

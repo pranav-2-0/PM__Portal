@@ -35,6 +35,20 @@ const generateDiscrepancySnapshot = async (triggeredBy: string) => {
   }
 };
 
+const getUserDepartmentPractice = (req: Request): string => {
+  const user = (req as any).user;
+  return (user?.department_name || user?.practice || '').trim();
+};
+
+const ensureUserDepartment = (req: Request, res: Response): string | null => {
+  const departmentPractice = getUserDepartmentPractice(req);
+  if (!departmentPractice) {
+    res.status(403).json({ error: 'User department is not set. Please sign up with a department.' });
+    return null;
+  }
+  return departmentPractice;
+};
+
 export const uploadEmployees = async (req: Request, res: Response) => {
   try {
     console.log('Upload employees request received');
@@ -314,7 +328,8 @@ export const uploadGAD = async (req: Request, res: Response) => {
     logger.info('Uploading GAD report', { filename: req.file.originalname, mimetype: req.file.mimetype, size: req.file.size });
     console.log(`[uploadGAD] file="${req.file.originalname}" mime="${req.file.mimetype}" size=${req.file.size}`);
 
-    const practiceFilter = ((req.body?.practice as string) || '').trim();
+    const userPractice = ensureUserDepartment(req, res);
+    if (!userPractice) return;
 
     const allEmployees = parseGADExcel(req.file.buffer);
 
@@ -326,14 +341,15 @@ export const uploadGAD = async (req: Request, res: Response) => {
     const distinctPractices = [...new Set(allEmployees.map(e => e.practice).filter(Boolean))].sort();
     console.log(`[uploadGAD] Distinct practice values in file (${allEmployees.length} rows):`, distinctPractices);
 
-    // Filter to selected practice when provided; process all if not specified
-    const employees = practiceFilter
-      ? allEmployees.filter(e => (e.practice || '').toLowerCase().trim() === practiceFilter.toLowerCase().trim())
-      : allEmployees;
+    const employees = allEmployees.filter(e => (e.practice || '').toLowerCase().trim() === userPractice.toLowerCase().trim());
+    const ignoredPractices = distinctPractices.filter(p => p.toLowerCase().trim() !== userPractice.toLowerCase().trim());
+    if (ignoredPractices.length > 0) {
+      logger.info('[uploadGAD] Ignoring rows for other practices', { ignoredPractices, totalRows: allEmployees.length, acceptedPractice: userPractice });
+    }
 
-    if (practiceFilter && employees.length === 0) {
+    if (employees.length === 0) {
       return res.status(400).json({
-        error: `No employees found for practice "${practiceFilter}" in this file. ` +
+        error: `No employees found for your department (${userPractice}) in this file. ` +
                `File contains ${allEmployees.length} records. ` +
                `Practices found: ${distinctPractices.join(', ') || '(none parsed — check column names)'}`,
         total_in_file: allEmployees.length,
@@ -345,20 +361,18 @@ export const uploadGAD = async (req: Request, res: Response) => {
     // Check whether the uploaded dataset is practice-scoped.
     // A practice-scoped dataset should contain exactly ONE distinct practice value.
     const scopeCheck = matchingService.validateDatasetScope(allEmployees);
-    if (!scopeCheck.isScoped && !practiceFilter) {
+    if (!scopeCheck.isScoped) {
       logger.warn('[uploadGAD] Dataset is not practice-scoped', { practices: scopeCheck.practices });
     }
 
-    logger.info(`GAD: ${allEmployees.length} total rows, ${employees.length} for practice "${practiceFilter || 'ALL'}"`);
+    logger.info(`GAD: ${allEmployees.length} total rows, ${employees.length} for practice "${userPractice}"`);
 
     // ── Step 1: Extract PMs from GAD and upsert them FIRST ──────────────────────
     // GAD rows contain People Manager ID + name + grade inline.
     // We must insert them into people_managers before employees to satisfy the FK.
     const allPMs = extractPMsFromGAD(req.file.buffer);
     // Filter to matching practice PMs when a practice filter is active
-    const pmsToInsert = practiceFilter
-      ? allPMs.filter(pm => (pm.practice || '').toLowerCase().trim() === practiceFilter.toLowerCase().trim())
-      : allPMs;
+    const pmsToInsert = allPMs.filter(pm => (pm.practice || '').toLowerCase().trim() === userPractice.toLowerCase().trim());
     if (pmsToInsert.length > 0) {
       const pmResult = pmsToInsert.length > 1000
         ? await bulkService.bulkInsertPMsOptimized(pmsToInsert)
@@ -402,16 +416,16 @@ export const uploadGAD = async (req: Request, res: Response) => {
     const sameGradeCount = await detectSameGradeExceptions();
 
     const newJoiners = employees.filter(e => e.is_new_joiner).length;
-    const practiceLabel = practiceFilter ? ` · Practice: ${practiceFilter}` : '';
+    const practiceLabel = ` · Practice: ${userPractice}`;
 
-    logger.info('GAD upload complete', { employees: result.count ?? result, newJoiners, sameGradeExceptions: sameGradeCount, practice: practiceFilter || 'ALL' });
+    logger.info('GAD upload complete', { employees: result.count ?? result, newJoiners, sameGradeExceptions: sameGradeCount, practice: userPractice });
     const discrepancy_summary = await generateDiscrepancySnapshot('gad_upload');
     res.json({
       message: `GAD report processed: ${result.count ?? result} employees, ${newJoiners} new joiners${practiceLabel}`,
       employees: result.count ?? result,
       new_joiners: newJoiners,
       same_grade_exceptions: sameGradeCount,
-      practice_filter: practiceFilter || null,
+      practice_filter: userPractice,
       total_in_file: allEmployees.length,
       discrepancy_summary,
       // Step 0 result: was the dataset practice-scoped?
@@ -435,7 +449,8 @@ export const uploadBenchReport = async (req: Request, res: Response) => {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
     logger.info('Uploading Bench report', { filename: req.file.originalname, size: req.file.size });
-    const practiceFilter = ((req.body?.practice as string) || '').trim();
+    const userPractice = ensureUserDepartment(req, res);
+    if (!userPractice) return;
 
     const allEmployees = parseEmployeeExcel(req.file.buffer); // upload_source='bench'
 
@@ -443,20 +458,22 @@ export const uploadBenchReport = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'No valid employee records found in Bench file.' });
     }
 
-    // Filter to selected practice when provided; process all if not specified
-    const employees = practiceFilter
-      ? allEmployees.filter(e => (e.practice || '').toLowerCase().trim() === practiceFilter.toLowerCase().trim())
-      : allEmployees;
+    const distinctPractices = [...new Set(allEmployees.map(e => e.practice).filter(Boolean))].sort();
+    const employees = allEmployees.filter(e => (e.practice || '').toLowerCase().trim() === userPractice.toLowerCase().trim());
+    const ignoredPractices = distinctPractices.filter(p => p.toLowerCase().trim() !== userPractice.toLowerCase().trim());
+    if (ignoredPractices.length > 0) {
+      logger.info('[uploadBenchReport] Ignoring rows for other practices', { ignoredPractices, totalRows: allEmployees.length, acceptedPractice: userPractice });
+    }
 
-    if (practiceFilter && employees.length === 0) {
+    if (employees.length === 0) {
       return res.status(400).json({
-        error: `No employees found for practice "${practiceFilter}" in this file. ` +
+        error: `No employees found for your department (${userPractice}) in this file. ` +
                `File contains ${allEmployees.length} records across other practices.`,
         total_in_file: allEmployees.length,
       });
     }
 
-    logger.info(`Bench: ${allEmployees.length} total rows, ${employees.length} for practice "${practiceFilter || 'ALL'}"`);
+    logger.info(`Bench: ${allEmployees.length} total rows, ${employees.length} for practice "${userPractice}"`);
 
     const result: any = employees.length > 5000
       ? await bulkService.bulkInsertEmployeesOptimized(employees)
@@ -479,14 +496,14 @@ export const uploadBenchReport = async (req: Request, res: Response) => {
 
     await recalcReporteeCounts();
 
-    const practiceLabel = practiceFilter ? ` · Practice: ${practiceFilter}` : '';
-    logger.info('Bench upload complete', { employees: result.count ?? result, onLeave: longLeaveResult.rowCount, practice: practiceFilter || 'ALL' });
+    const practiceLabel = ` · Practice: ${userPractice}`;
+    logger.info('Bench upload complete', { employees: result.count ?? result, onLeave: longLeaveResult.rowCount, practice: userPractice });
     const discrepancy_summary = await generateDiscrepancySnapshot('bench_upload');
     res.json({
       message: `Bench report processed: ${result.count ?? result} employees${practiceLabel}`,
       employees: result.count ?? result,
       pm_on_leave_exceptions: longLeaveResult.rowCount ?? 0,
-      practice_filter: practiceFilter || null,
+      practice_filter: userPractice,
       total_in_file: allEmployees.length,
       discrepancy_summary,
     });
@@ -641,13 +658,18 @@ export const assignPMToEmployee = async (req: Request, res: Response) => {
 
 export const getNewJoiners = async (req: Request, res: Response) => {
   try {
+    const userPractice = ensureUserDepartment(req, res);
+    if (!userPractice) return;
+
     const result = await pool.query(
       `SELECT * FROM employees
        WHERE is_new_joiner = true
          AND current_pm_id IS NULL
          AND is_frozen = false
          AND (joining_date IS NULL OR joining_date >= CURRENT_DATE - INTERVAL '90 days')
-       ORDER BY joining_date DESC`
+         AND practice = $1
+       ORDER BY joining_date DESC`,
+      [userPractice]
     );
     res.json(result.rows);
   } catch (error: any) {
@@ -664,6 +686,9 @@ export const getNewJoinersList = async (req: Request, res: Response) => {
     const pageSizeNum = parseInt(pageSize as string);
     const offset = (pageNum - 1) * pageSizeNum;
 
+    const userPractice = ensureUserDepartment(req, res);
+    if (!userPractice) return;
+
     let query = `
       SELECT * FROM employees
       WHERE is_new_joiner = true
@@ -671,6 +696,7 @@ export const getNewJoinersList = async (req: Request, res: Response) => {
         AND is_frozen = false
         AND status = 'active'
         AND (joining_date IS NULL OR joining_date >= CURRENT_DATE - INTERVAL '90 days')
+        AND practice = $1
     `;
     let countQuery = `
       SELECT COUNT(*) FROM employees
@@ -679,6 +705,7 @@ export const getNewJoinersList = async (req: Request, res: Response) => {
         AND is_frozen = false
         AND status = 'active'
         AND (joining_date IS NULL OR joining_date >= CURRENT_DATE - INTERVAL '90 days')
+        AND practice = $1
     `;
 
     const params: any[] = [];
@@ -733,10 +760,18 @@ export const getAllEmployees = async (req: Request, res: Response) => {
     const pageSizeNum = parseInt(pageSize as string);
     const offset = (pageNum - 1) * pageSizeNum;
     
+    const userPractice = ensureUserDepartment(req, res);
+    if (!userPractice) return;
+
     let query = 'SELECT e.*, pm.name as pm_name FROM employees e LEFT JOIN people_managers pm ON e.current_pm_id = pm.employee_id WHERE 1=1';
     let countQuery = 'SELECT COUNT(*) FROM employees e WHERE 1=1';
     const params: any[] = [];
     let paramIndex = 1;
+
+    query += ` AND e.practice = $${paramIndex}`;
+    countQuery += ` AND e.practice = $${paramIndex}`;
+    params.push(userPractice);
+    paramIndex++;
 
     if (status) {
       query += ` AND e.status = $${paramIndex}`;
@@ -794,6 +829,9 @@ export const getAllPMs = async (req: Request, res: Response) => {
     const pageSizeNum = parseInt(pageSize as string);
     const offset = (pageNum - 1) * pageSizeNum;
     
+    const userPractice = ensureUserDepartment(req, res);
+    if (!userPractice) return;
+
     let query = `
       SELECT pm.*,
              ROUND((pm.reportee_count::numeric / 10) * 100)::int AS utilization,
@@ -806,6 +844,11 @@ export const getAllPMs = async (req: Request, res: Response) => {
     let countQuery = `SELECT COUNT(*) FROM people_managers pm WHERE pm.grade = ANY(ARRAY['C1','C2','D1','D2','D3','E1','E2'])`;
     const params: any[] = [];
     let paramIndex = 1;
+
+    query += ` AND pm.practice = $${paramIndex}`;
+    countQuery += ` AND pm.practice = $${paramIndex}`;
+    params.push(userPractice);
+    paramIndex++;
 
     if (is_active !== undefined) {
       query += ` AND pm.is_active = $${paramIndex}`;
@@ -897,6 +940,9 @@ export const getAllSeparations = async (req: Request, res: Response) => {
     const pageNum = parseInt(page as string);
     const pageSizeNum = parseInt(pageSize as string);
     const offset = (pageNum - 1) * pageSizeNum;
+
+    const userPractice = ensureUserDepartment(req, res);
+    if (!userPractice) return;
     
     let query = `
       SELECT
@@ -932,6 +978,11 @@ export const getAllSeparations = async (req: Request, res: Response) => {
     `;
     const params: any[] = [];
     let paramIndex = 1;
+
+    query += ` AND (pm.practice = $${paramIndex} OR emp.practice = $${paramIndex})`;
+    countQuery += ` AND (pm.practice = $${paramIndex} OR emp.practice = $${paramIndex})`;
+    params.push(userPractice);
+    paramIndex++;
 
     if (status) {
       query += ` AND sr.status = $${paramIndex}`;
@@ -1008,13 +1059,19 @@ export const getAllSeparations = async (req: Request, res: Response) => {
 
 export const getPendingAssignments = async (req: Request, res: Response) => {
   try {
+    const userPractice = ensureUserDepartment(req, res);
+    if (!userPractice) return;
+
     const result = await pool.query(
       `SELECT pa.*, e.name as employee_name, pm.name as pm_name 
        FROM pm_assignments pa
        JOIN employees e ON pa.employee_id = e.employee_id
        JOIN people_managers pm ON pa.new_pm_id = pm.employee_id
        WHERE pa.status = 'pending'
-       ORDER BY pa.created_at DESC`
+         AND e.practice = $1
+         AND pm.practice = $1
+       ORDER BY pa.created_at DESC`,
+      [userPractice]
     );
     res.json(result.rows);
   } catch (error: any) {
@@ -1025,7 +1082,10 @@ export const getPendingAssignments = async (req: Request, res: Response) => {
 
 export const getDashboardStats = async (req: Request, res: Response) => {
   try {
-    const stats = await statsService.getDashboardStats();
+    const userPractice = ensureUserDepartment(req, res);
+    if (!userPractice) return;
+
+    const stats = await statsService.getDashboardStats(userPractice);
     res.json(stats);
   } catch (error: any) {
     logger.error('Error fetching dashboard stats', error);
@@ -1035,7 +1095,10 @@ export const getDashboardStats = async (req: Request, res: Response) => {
 
 export const getPMCapacityReport = async (req: Request, res: Response) => {
   try {
-    const report = await statsService.getPMCapacityReport();
+    const userPractice = ensureUserDepartment(req, res);
+    if (!userPractice) return;
+
+    const report = await statsService.getPMCapacityReport(userPractice);
     res.json(report);
   } catch (error: any) {
     logger.error('Error fetching PM capacity report', error);
@@ -1045,9 +1108,12 @@ export const getPMCapacityReport = async (req: Request, res: Response) => {
 
 export const getPMReportSummary = async (req: Request, res: Response) => {
   try {
+    const userPractice = ensureUserDepartment(req, res);
+    if (!userPractice) return;
+
     const summary = await statsService.getPMReportSummary({
       is_active: req.query.is_active as string,
-      practice: req.query.practice as string,
+      practice: userPractice,
       cu: req.query.cu as string,
       region: req.query.region as string,
       grade: req.query.grade as string,
@@ -1073,12 +1139,15 @@ export const checkDatabaseHealth = async (req: Request, res: Response) => {
 // Get detailed report for a single PM: their info, reportees, separation, pending assignments
 export const getPMDetailReport = async (req: Request, res: Response) => {
   try {
+    const userPractice = ensureUserDepartment(req, res);
+    if (!userPractice) return;
+
     const { pmId } = req.params;
 
     // PM details
     const pmResult = await pool.query(
-      'SELECT * FROM people_managers WHERE employee_id = $1',
-      [pmId]
+      'SELECT * FROM people_managers WHERE employee_id = $1 AND practice = $2',
+      [pmId, userPractice]
     );
     if (pmResult.rows.length === 0) {
       return res.status(404).json({ error: 'PM not found' });
@@ -1089,9 +1158,9 @@ export const getPMDetailReport = async (req: Request, res: Response) => {
     const reporteesResult = await pool.query(
       `SELECT employee_id, name, email, practice, cu, region, grade, skill, account, joining_date, is_new_joiner, status
        FROM employees
-       WHERE current_pm_id = $1 AND status = 'active'
+       WHERE current_pm_id = $1 AND status = 'active' AND practice = $2
        ORDER BY name ASC`,
-      [pmId]
+      [pmId, userPractice]
     );
 
     // Separation record for this PM (if they are leaving)
@@ -1249,7 +1318,10 @@ export const getAssignmentTrends = async (req: Request, res: Response) => {
 
 export const getPracticeDistribution = async (req: Request, res: Response) => {
   try {
-    const distribution = await statsService.getPracticeDistribution();
+    const userPractice = ensureUserDepartment(req, res);
+    if (!userPractice) return;
+
+    const distribution = await statsService.getPracticeDistribution(userPractice);
     res.json(distribution);
   } catch (error: any) {
     logger.error('Error fetching practice distribution', error);
@@ -1269,7 +1341,10 @@ export const getApprovalMetrics = async (req: Request, res: Response) => {
 
 export const getGradeDistribution = async (req: Request, res: Response) => {
   try {
-    const distribution = await statsService.getGradeDistribution();
+    const userPractice = ensureUserDepartment(req, res);
+    if (!userPractice) return;
+
+    const distribution = await statsService.getGradeDistribution(userPractice);
     res.json(distribution);
   } catch (error: any) {
     logger.error('Error fetching grade distribution', error);
@@ -1279,7 +1354,10 @@ export const getGradeDistribution = async (req: Request, res: Response) => {
 
 export const getRegionStats = async (req: Request, res: Response) => {
   try {
-    const stats = await statsService.getRegionStats();
+    const userPractice = ensureUserDepartment(req, res);
+    if (!userPractice) return;
+
+    const stats = await statsService.getRegionStats(userPractice);
     res.json(stats);
   } catch (error: any) {
     logger.error('Error fetching region stats', error);
@@ -1290,15 +1368,18 @@ export const getRegionStats = async (req: Request, res: Response) => {
 // Get upload statistics summary
 export const getUploadStats = async (req: Request, res: Response) => {
   try {
+    const userPractice = ensureUserDepartment(req, res);
+    if (!userPractice) return;
+
     const result = await pool.query(`
       SELECT 
-        (SELECT COUNT(*) FROM employees WHERE status = 'active') as "totalEmployees",
-        (SELECT COUNT(*) FROM people_managers WHERE is_active = true) as "activePMs",
-        (SELECT COUNT(*) FROM separation_reports WHERE lwd >= CURRENT_DATE) as "pendingSeparations",
-        (SELECT COUNT(*) FROM employees WHERE is_new_joiner = true AND current_pm_id IS NULL) as "newJoiners",
-        (SELECT COUNT(*) FROM pm_assignments WHERE status = 'pending') as "pendingAssignments",
-        (SELECT COUNT(*) FROM skill_repository) as "skillCount"
-    `);
+        (SELECT COUNT(*) FROM employees WHERE status = 'active' AND practice = $1) as "totalEmployees",
+        (SELECT COUNT(*) FROM people_managers WHERE is_active = true AND practice = $1) as "activePMs",
+        (SELECT COUNT(*) FROM separation_reports sr JOIN employees e ON sr.employee_id = e.employee_id WHERE sr.lwd >= CURRENT_DATE AND e.practice = $1) as "pendingSeparations",
+        (SELECT COUNT(*) FROM employees WHERE is_new_joiner = true AND current_pm_id IS NULL AND practice = $1) as "newJoiners",
+        (SELECT COUNT(*) FROM pm_assignments pa JOIN employees e ON pa.employee_id = e.employee_id WHERE pa.status = 'pending' AND e.practice = $1) as "pendingAssignments",
+        (SELECT COUNT(*) FROM skill_repository WHERE practice = $1) as "skillCount"
+    `, [userPractice]);
     res.json(result.rows[0]);
   } catch (error: any) {
     logger.error('Error fetching upload stats', error);
@@ -1515,14 +1596,18 @@ export const generatePracticeReport = async (req: Request, res: Response) => {
 
 export const getPracticeFilters = async (req: Request, res: Response) => {
   try {
+    const userPractice = ensureUserDepartment(req, res);
+    if (!userPractice) return;
+
     const [practices, cus, regions] = await Promise.all([
       practiceReportService.getPracticesList(),
       practiceReportService.getCUsList(),
       practiceReportService.getRegionsList(),
     ]);
 
+    const filteredPractices = practices.filter(p => p === userPractice);
     res.json({
-      practices: ['All', ...practices],
+      practices: ['All', ...filteredPractices],
       cus: ['All', ...cus],
       regions: ['All', ...regions],
     });
@@ -1574,7 +1659,7 @@ export const confirmAutoAssign = async (req: Request, res: Response) => {
   try {
     const result = await dataService.autoAssignEmployees(false);
     res.json({
-      message: `Assigned ${result.assigned} employees to PMs. ${result.unassigned} could not be matched (no eligible PM in their practice).`,
+      message: `Assigned ${result.assigned} employees to PMs. ${result.cannotBeAssigned} could not be matched (no eligible PM in their practice).`,
       ...result,
       count: result.assigned,
     });
@@ -1636,14 +1721,16 @@ export const updateMatchingWeights = async (req: Request, res: Response) => {
 
 export const getMisalignments = async (req: Request, res: Response) => {
   try {
-    const { page = '1', pageSize = '50', type, practice } = req.query as any;
+    const userPractice = ensureUserDepartment(req, res);
+    if (!userPractice) return;
+
+    const { page = '1', pageSize = '50', type } = req.query as any;
     const pageNum = parseInt(page as string);
     const pageSizeNum = parseInt(pageSize as string);
     const offset = (pageNum - 1) * pageSizeNum;
 
     const typeFilter = type && type !== 'all' ? `AND mismatch_type = '${(type as string).replace(/'/g, "''")}'` : '';
-    const pf = practice && practice !== 'All' ? practice as string : null;
-    const practiceClause = pf ? `AND e.practice = '${pf.replace(/'/g, "''")}'` : '';
+    const practiceClause = `AND e.practice = '${userPractice.replace(/'/g, "''")}'`;
 
     // ── OPTIMISED ─────────────────────────────────────────────────────────────
     // Previously: two full CTE executions (one for COUNT, one for data).
@@ -2237,12 +2324,14 @@ export const exportMisalignmentsCSV = async (req: Request, res: Response) => {
 
 export const getUnmappedEmployees = async (req: Request, res: Response) => {
   try {
-    const { page = '1', pageSize = '50', format, practice } = req.query as any;
+    const userPractice = ensureUserDepartment(req, res);
+    if (!userPractice) return;
+
+    const { page = '1', pageSize = '50', format } = req.query as any;
     const pageNum = parseInt(page as string);
     const pageSizeNum = parseInt(pageSize as string);
     const offset = (pageNum - 1) * pageSizeNum;
-    const pf = practice && practice !== 'All' ? practice as string : null;
-    const practiceClause = pf ? `AND practice = '${pf.replace(/'/g, "''")}'` : '';
+    const practiceClause = `AND practice = '${userPractice.replace(/'/g, "''")}'`;
 
     if (format === 'csv') {
       const { rows } = await pool.query(`
@@ -2300,6 +2389,9 @@ export const getUnmappedEmployees = async (req: Request, res: Response) => {
 
 export const getGradewisePMCapacity = async (req: Request, res: Response) => {
   try {
+    const userPractice = ensureUserDepartment(req, res);
+    if (!userPractice) return;
+
     const { grade } = req.query;
 
     if (grade) {
@@ -2312,10 +2404,11 @@ export const getGradewisePMCapacity = async (req: Request, res: Response) => {
           CASE WHEN pm.is_active THEN 'Active' ELSE 'Inactive' END AS status
         FROM people_managers pm
         WHERE pm.is_active = true
+          AND pm.practice = $1
           AND pm.grade = ANY(ARRAY['C1','C2','D1','D2','D3','E1','E2'])
-          AND pm.grade = $1
+          AND pm.grade = $2
         ORDER BY pm.reportee_count DESC, pm.name
-      `, [grade]);
+      `, [userPractice, grade]);
       return res.json({ grade, pms: result.rows, count: result.rows.length });
     }
 
@@ -2331,9 +2424,10 @@ export const getGradewisePMCapacity = async (req: Request, res: Response) => {
         ROUND(100.0 * SUM(pm.reportee_count) / NULLIF(COUNT(pm.employee_id) * 10, 0), 1) AS utilization_pct
       FROM people_managers pm
       WHERE pm.is_active = true
+        AND pm.practice = $1
         AND pm.grade = ANY(ARRAY['C1','C2','D1','D2','D3','E1','E2'])
       GROUP BY pm.grade
-    `);
+    `, [userPractice]);
 
     // Sort by GRADE_ORDER
     const rows = result.rows.sort((a: any, b: any) => {
@@ -2431,7 +2525,18 @@ export const overridePMAssignment = async (req: Request, res: Response) => {
 // Get PM change history for an employee
 export const getEmployeePMHistory = async (req: Request, res: Response) => {
   try {
+    const userPractice = ensureUserDepartment(req, res);
+    if (!userPractice) return;
+
     const { employeeId } = req.params;
+
+    const employeeResult = await pool.query(`SELECT practice FROM employees WHERE employee_id = $1`, [employeeId]);
+    if (employeeResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Employee not found' });
+    }
+    if (employeeResult.rows[0].practice !== userPractice) {
+      return res.status(403).json({ error: 'Access denied for this employee' });
+    }
 
     const assignmentsResult = await pool.query(`
       SELECT
@@ -2467,13 +2572,15 @@ export const getEmployeePMHistory = async (req: Request, res: Response) => {
 
 export const getGADAnalysisSummary = async (req: Request, res: Response) => {
   try {
-    const { practice, pm_id } = req.query as { practice?: string; pm_id?: string };
-    const pf   = practice && practice !== 'All' ? practice : null;
-    const pmId = pm_id   && pm_id   !== 'All'  ? pm_id   : null;
+    const userPractice = ensureUserDepartment(req, res);
+    if (!userPractice) return;
 
-    const empPF    = pf   ? `AND e.practice = $1`                                  : '';
+    const { pm_id } = req.query as { pm_id?: string };
+    const pmId = pm_id && pm_id !== 'All' ? pm_id : null;
+
+    const empPF    = `AND e.practice = $1`;
     const pmClause = pmId ? `AND e.current_pm_id = '${pmId.replace(/'/g, "''")}'` : '';
-    const params   = pf   ? [pf]                                                    : [];
+    const params   = [userPractice];
 
     // ══════════════════════════════════════════════════════════════════════════
     // OPTIMISED: Single-pass CTE using grade_levels table (indexed) and
@@ -2641,11 +2748,13 @@ export const getGADAnalysisSummary = async (req: Request, res: Response) => {
 
 export const getCorrectlyMappedEmployees = async (req: Request, res: Response) => {
   try {
-    const { format, page = '1', pageSize = '50', practice, pm_id } = req.query as any;
+    const userPractice = ensureUserDepartment(req, res);
+    if (!userPractice) return;
+
+    const { format, page = '1', pageSize = '50', pm_id } = req.query as any;
     const offset = (parseInt(page) - 1) * parseInt(pageSize);
-    const pf   = practice && practice !== 'All' ? practice as string : null;
-    const pmId = pm_id    && pm_id    !== 'All' ? pm_id    as string : null;
-    const practiceClause = pf   ? `AND e.practice = '${pf.replace(/'/g, "''")}'`        : '';
+    const pmId = pm_id && pm_id !== 'All' ? pm_id as string : null;
+    const practiceClause = `AND e.practice = '${userPractice.replace(/'/g, "''")}'`;
     const pmIdClause     = pmId ? `AND e.current_pm_id = '${pmId.replace(/'/g, "''")}'` : '';
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -2752,11 +2861,13 @@ export const getCorrectlyMappedEmployees = async (req: Request, res: Response) =
 
 export const getSameGradeExceptions = async (req: Request, res: Response) => {
   try {
-    const { format, page = '1', pageSize = '50', practice, pm_id } = req.query as any;
+    const userPractice = ensureUserDepartment(req, res);
+    if (!userPractice) return;
+
+    const { format, page = '1', pageSize = '50', pm_id } = req.query as any;
     const offset = (parseInt(page) - 1) * parseInt(pageSize);
-    const pf   = practice && practice !== 'All' ? practice as string : null;
-    const pmId = pm_id    && pm_id    !== 'All' ? pm_id    as string : null;
-    const practiceClause = pf   ? `AND e.practice = '${pf.replace(/'/g, "''")}'`        : '';
+    const pmId = pm_id && pm_id !== 'All' ? pm_id as string : null;
+    const practiceClause = `AND e.practice = '${userPractice.replace(/'/g, "''")}'`;
     const pmIdClause     = pmId ? `AND e.current_pm_id = '${pmId.replace(/'/g, "''")}'` : '';
 
     const baseSQL = `
@@ -2812,10 +2923,12 @@ export const getSameGradeExceptions = async (req: Request, res: Response) => {
 
 export const getProposedPMs = async (req: Request, res: Response) => {
   try {
-    const { format, page = '1', pageSize = '50', practice } = req.query as any;
+    const userPractice = ensureUserDepartment(req, res);
+    if (!userPractice) return;
+
+    const { format, page = '1', pageSize = '50' } = req.query as any;
     const offset = (parseInt(page) - 1) * parseInt(pageSize);
-    const pf = practice && practice !== 'All' ? practice as string : null;
-    const practiceClause = pf ? `AND e.practice = '${pf.replace(/'/g, "''")}'` : '';
+    const practiceClause = `AND e.practice = '${userPractice.replace(/'/g, "''")}'`;
 
     const whereSQL = `
       WHERE e.status = 'active'

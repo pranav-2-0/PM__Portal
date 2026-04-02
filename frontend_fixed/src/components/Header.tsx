@@ -8,9 +8,17 @@ export default function Header() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
+  const showSettings = user?.role?.toLowerCase() === 'admin';
+  const practiceLabel = user?.department_name || user?.practice || '';
+
   const handleLogout = () => {
     logout();
     navigate("/login");
+  };
+
+  const handleSettings = () => {
+    setShowUserMenu(false);
+    navigate('/settings');
   };
 
   return (
@@ -49,15 +57,23 @@ export default function Header() {
               <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
                 <User size={18} />
               </div>
-              <span className="text-sm font-medium">{user?.name || "User"}</span>
+              <div className="flex flex-col items-start text-left">
+                <span className="text-sm font-medium">{user?.name || "User"}</span>
+                {practiceLabel && <span className="text-[11px] text-white/80 leading-tight">{practiceLabel}</span>}
+              </div>
             </button>
 
             {showUserMenu && (
               <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl">
-                <button className="w-full flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-gray-50">
-                  <Settings size={16} />
-                  <span>Settings</span>
-                </button>
+                {showSettings && (
+                  <button
+                    onClick={handleSettings}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-gray-50"
+                  >
+                    <Settings size={16} />
+                    <span>Settings</span>
+                  </button>
+                )}
                 <button
                   onClick={handleLogout}
                   className="w-full flex items-center gap-3 px-4 py-3 text-red-600 hover:bg-red-50"

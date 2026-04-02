@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Mail, Lock, AlertCircle, Loader } from 'lucide-react';
 import { authService } from '../services/authService';
+import { useAuth } from '../context/AuthContext';
 
 export default function Login() {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -35,12 +37,14 @@ export default function Login() {
       // Call login API
       const response = await authService.login(formData.email, formData.password);
 
+      if (response.user) {
+        login(response.user);
+      }
+
       // Show success message
       console.log('Login successful:', response);
 
       // Redirect to dashboard
-      
-
       navigate('/');
     } catch (err: any) {
       console.error('Login error:', err);

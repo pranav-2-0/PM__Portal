@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import pool from '../config/database';
+import { authMiddleware } from '../middleware/authMiddleware';
 import {
   uploadEmployees,
   uploadNewJoiners,
@@ -98,6 +99,9 @@ const upload = multer({
 
 // Health check
 router.get('/health/db', checkDatabaseHealth);
+
+// Require authentication for all PM routes after health
+router.use(authMiddleware);
 
 // Data upload routes
 router.post('/upload/employees', upload.single('file'), uploadEmployees);

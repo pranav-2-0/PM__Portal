@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   CheckCircle, AlertTriangle, UserX, AlertCircle,
-  UserPlus, Download, RefreshCw, ClipboardList, Filter, ExternalLink, User,
+  UserPlus, Download, RefreshCw, Filter, ExternalLink, User,
 } from 'lucide-react';
 import {
   useGetGADAnalysisSummaryQuery,

@@ -1,10 +1,22 @@
 import React from 'react';
-import { useGetUploadStatsQuery, useLazyPreviewAutoGeneratePMsQuery, useConfirmAutoGeneratePMsMutation, useLazyPreviewAutoAssignQuery, useConfirmAutoAssignMutation } from '../services/pmApi';
+import { useAuth } from '../context/AuthContext';
+import { useGetUploadStatsQuery, useLazyPreviewAutoGeneratePMsQuery, useConfirmAutoGeneratePMsMutation, useLazyPreviewAutoAssignQuery, useConfirmAutoAssignMutation,
+  useUploadEmployeesMutation, useUploadPMsMutation, useUploadNewJoinersMutation, useUploadSeparationsMutation, useUploadSkillReportMutation, useUploadGADMutation, useUploadBenchReportMutation } from '../services/pmApi';
 import { SORTED_PRACTICES } from '../constants/practices';
 import { CloudUpload, Loader2, X, Users, UserCog, UserX, ExternalLink, BarChart3, FileSpreadsheet, Clock, BookOpen, Sparkles, Eye, CheckCircle2, ArrowRight, ChevronRight, AlertTriangle } from 'lucide-react';
 
 export const DataUpload: React.FC = () => {
   const { data: uploadStats, refetch: refetchStats } = useGetUploadStatsQuery();
+  const [uploadEmployees] = useUploadEmployeesMutation();
+  const [uploadPMs] = useUploadPMsMutation();
+  const [uploadNewJoiners] = useUploadNewJoinersMutation();
+  const [uploadSeparations] = useUploadSeparationsMutation();
+  const [uploadSkillReport] = useUploadSkillReportMutation();
+  const [uploadGAD] = useUploadGADMutation();
+  const [uploadBenchReport] = useUploadBenchReportMutation();
+  const { user } = useAuth();
+  const departmentPractice = (user?.department_name || user?.department || '').trim();
+
   // Tracks which upload type is in-flight (replaces per-mutation isLoading flags)
   const [uploadingType, setUploadingType] = React.useState<string | null>(null);
   const [triggerPreview, { data: previewData, isLoading: previewLoading, isFetching: previewFetching }] = useLazyPreviewAutoGeneratePMsQuery();
@@ -18,7 +30,10 @@ export const DataUpload: React.FC = () => {
   // Practice selections for scoped uploads — list comes from the PRACTICES constant
   // (available even on empty DB so practice-scoped initial loads are possible)
   const practiceList = SORTED_PRACTICES;
-  const [practiceSelections, setPracticeSelections] = React.useState<Record<string, string>>({ gad: '', bench: '' });
+  const [practiceSelections, setPracticeSelections] = React.useState<Record<string, string>>({
+    gad: departmentPractice,
+    bench: departmentPractice,
+  });
   
   // State for file selection
   const [selectedFiles, setSelectedFiles] = React.useState<{
@@ -30,6 +45,16 @@ export const DataUpload: React.FC = () => {
     gad?: File;
     bench?: File;
   }>({});
+
+  React.useEffect(() => {
+    if (departmentPractice) {
+      setPracticeSelections(prev => ({
+        ...prev,
+        gad: departmentPractice,
+        bench: departmentPractice,
+      }));
+    }
+  }, [departmentPractice]);
 
   const handleFileSelect = (file: File, type: 'employees' | 'pms' | 'newJoiners' | 'separations' | 'skills' | 'gad' | 'bench') => {
     // Check file size (100MB = 104857600 bytes)
@@ -46,74 +71,54 @@ export const DataUpload: React.FC = () => {
     setMessage(null); // Clear previous messages
   };
 
-  const handleUpload = (type: 'employees' | 'pms' | 'newJoiners' | 'separations' | 'skills' | 'gad' | 'bench') => {
+  const handleUpload = async (type: 'employees' | 'pms' | 'newJoiners' | 'separations' | 'skills' | 'gad' | 'bench') => {
     const file = selectedFiles[type];
     if (!file) return;
 
-    console.log('Uploading:', file.name, 'type:', type, 'size:', file.size);
+    const mutationMap = {
+      employees: uploadEmployees,
+      pms: uploadPMs,
+      newJoiners: uploadNewJoiners,
+      separations: uploadSeparations,
+      skills: uploadSkillReport,
+      gad: uploadGAD,
+      bench: uploadBenchReport,
+    } as const;
 
-    // Use same-origin proxy path — no CORS preflight, works through Vite dev proxy.
-    // Using XMLHttpRequest instead of fetch() — XHR handles large multipart
-    // uploads more reliably across browsers and dev proxy environments.
-    const urlMap: Record<string, string> = {
-      employees:   '/api/pm/upload/employees',
-      pms:         '/api/pm/upload/pms',
-      newJoiners:  '/api/pm/upload/new-joiners',
-      separations: '/api/pm/upload/separations',
-      skills:      '/api/pm/upload/skills',
-      gad:         '/api/pm/upload/gad',
-      bench:       '/api/pm/upload/bench',
-    };
+    const uploadMutation = mutationMap[type];
+    if (!uploadMutation) {
+      setMessage({ type: 'error', text: 'Upload type not supported.' });
+      return;
+    }
+
+    console.log('Uploading:', file.name, 'type:', type, 'size:', file.size);
 
     setUploadingType(type);
     const formData = new FormData();
     formData.append('file', file);
-    // Pass selected practice so backend can filter rows
-    const practice = (practiceSelections as Record<string, string>)[type] || '';
+    const practice = (type === 'gad' || type === 'bench')
+      ? (departmentPractice || (practiceSelections as Record<string, string>)[type] || '')
+      : (practiceSelections as Record<string, string>)[type] || '';
     if (practice) formData.append('practice', practice);
 
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', urlMap[type]);
-    // 10 min timeout — skill reports can be very large Excel files that take
-    // several minutes to parse and insert server-side.
-    xhr.timeout = 600000;
-
-    xhr.onload = () => {
-      try {
-        const result = JSON.parse(xhr.responseText);
-        if (xhr.status >= 200 && xhr.status < 300) {
-          console.log('Upload successful:', result);
-          const count = result.count ?? result.employees ?? result.inserted ?? '';
-          setMessage({ type: 'success', text: `${result.message}${count ? ` (${count} records)` : ''}` });
-          setSelectedFiles(prev => ({ ...prev, [type]: undefined }));
-          if (result.discrepancy_summary) setDiscrepancySummary(result.discrepancy_summary);
-          if (result.dataset_scope && !result.dataset_scope.is_scoped) {
-            setDatasetScopeWarning(result.dataset_scope);
-          }
-          refetchStats();
-        } else {
-          const errorMessage = result?.error || result?.message || `Server error (${xhr.status})`;
-          setMessage({ type: 'error', text: errorMessage });
-        }
-      } catch {
-        setMessage({ type: 'error', text: `Server error (${xhr.status})` });
+    try {
+      const result = await uploadMutation(formData).unwrap() as any;
+      console.log('Upload successful:', result);
+      const count = result.count ?? result.employees ?? result.inserted ?? '';
+      setMessage({ type: 'success', text: `${result.message}${count ? ` (${count} records)` : ''}` });
+      setSelectedFiles(prev => ({ ...prev, [type]: undefined }));
+      if (result.discrepancy_summary) setDiscrepancySummary(result.discrepancy_summary);
+      if (result.dataset_scope && !result.dataset_scope.is_scoped) {
+        setDatasetScopeWarning(result.dataset_scope);
       }
+      refetchStats();
+    } catch (error: any) {
+      console.error('Upload failed:', error);
+      const errorMessage = error?.data?.error || error?.data?.message || error?.message || 'Upload failed. Please try again.';
+      setMessage({ type: 'error', text: errorMessage });
+    } finally {
       setUploadingType(null);
-    };
-
-    xhr.onerror = () => {
-      console.error('XHR upload error — network failure');
-      setMessage({ type: 'error', text: 'Network error: could not reach the server. Make sure the backend is running.' });
-      setUploadingType(null);
-    };
-
-    xhr.ontimeout = () => {
-      console.error('XHR upload timeout');
-      setMessage({ type: 'error', text: 'Upload timed out (>2 min). The file may be too large or the server is busy.' });
-      setUploadingType(null);
-    };
-
-    xhr.send(formData);
+    }
   };
 
   const handleAutoGenerate = async () => {
@@ -138,10 +143,10 @@ export const DataUpload: React.FC = () => {
     }
   };
 
-  const UploadCard = ({ title, type, loading, description, badge, requiresPractice = false, practiceList: cardPracticeList = [], selectedPractice = '', onPracticeChange = (_: string) => {} }: any) => {
+  const UploadCard = ({ title, type, loading, description, badge, requiresPractice = false, lockedPractice = '', practiceList: cardPracticeList = [], selectedPractice = '', onPracticeChange = (_: string) => {} }: any) => {
     const selectedFile = (selectedFiles as Record<string, File | undefined>)[type];
-    // canProceed: true when no practice required, OR a practice has been selected
-    const canProceed = !requiresPractice || !!selectedPractice;
+    // canProceed: true when no practice required, OR a practice is selected/locked
+    const canProceed = !requiresPractice || !!selectedPractice || !!lockedPractice;
     const handlePracticeSelect = (val: string) => {
       onPracticeChange(val);
       // Clear any selected file when practice changes to avoid uploading wrong data
@@ -163,21 +168,35 @@ export const DataUpload: React.FC = () => {
             <label className="block text-xs font-semibold text-gray-700 mb-1.5">
               Practice <span className="text-red-500">*</span>
             </label>
-            <select
-              value={selectedPractice}
-              onChange={e => handlePracticeSelect(e.target.value)}
-              className={`w-full px-3 py-2 border rounded-lg text-sm bg-white focus:outline-none focus:ring-2 transition-colors ${
-                selectedPractice
-                  ? 'border-green-400 text-gray-800 focus:ring-green-300'
-                  : 'border-amber-400 text-gray-500 focus:ring-amber-300'
-              }`}
-            >
-              <option value="">— Select Practice —</option>
-              {cardPracticeList.map((p: string) => (
-                <option key={p} value={p}>{p}</option>
-              ))}
-            </select>
-            {!selectedPractice ? (
+            {lockedPractice ? (
+              <select
+                value={lockedPractice}
+                disabled
+                className="w-full px-3 py-2 border rounded-lg text-sm bg-gray-100 text-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-300 cursor-not-allowed"
+              >
+                <option value={lockedPractice}>{lockedPractice}</option>
+              </select>
+            ) : (
+              <select
+                value={selectedPractice}
+                onChange={e => handlePracticeSelect(e.target.value)}
+                className={`w-full px-3 py-2 border rounded-lg text-sm bg-white focus:outline-none focus:ring-2 transition-colors ${
+                  selectedPractice
+                    ? 'border-green-400 text-gray-800 focus:ring-green-300'
+                    : 'border-amber-400 text-gray-500 focus:ring-amber-300'
+                }`}
+              >
+                <option value="">— Select Practice —</option>
+                {cardPracticeList.map((p: string) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            )}
+            {lockedPractice ? (
+              <p className="text-xs text-blue-600 mt-1">
+                Practice locked to your department.
+              </p>
+            ) : !selectedPractice ? (
               <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
                 <AlertTriangle className="w-3 h-3 flex-shrink-0" /> Select a practice to enable upload
               </p>
@@ -496,6 +515,7 @@ export const DataUpload: React.FC = () => {
           loading={uploadingType === 'gad'}
           badge="Step 1 — Upload First"
           requiresPractice={true}
+          lockedPractice={departmentPractice}
           practiceList={practiceList}
           selectedPractice={practiceSelections.gad}
           onPracticeChange={(v: string) => setPracticeSelections(prev => ({ ...prev, gad: v }))}
@@ -506,6 +526,7 @@ export const DataUpload: React.FC = () => {
           type="bench"
           loading={uploadingType === 'bench'}
           requiresPractice={true}
+          lockedPractice={departmentPractice}
           practiceList={practiceList}
           selectedPractice={practiceSelections.bench}
           onPracticeChange={(v: string) => setPracticeSelections(prev => ({ ...prev, bench: v }))}

@@ -149,7 +149,7 @@ function App() {
           <Route
             path="/settings"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute requiredRole="Admin">
                 <Layout>
                   <Settings />
                 </Layout>

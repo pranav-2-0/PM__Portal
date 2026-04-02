@@ -6,6 +6,10 @@ export const pmApi = createApi({
   baseQuery: fetchBaseQuery({ 
     baseUrl: '/api/pm',
     prepareHeaders: (headers, { endpoint }) => {
+      const token = localStorage.getItem('authToken');
+      if (token) {
+        headers.set('Authorization', `Bearer ${token}`);
+      }
       // Don't set Content-Type for file uploads - let browser set it with boundary
       if (endpoint === 'uploadEmployees' || endpoint === 'uploadNewJoiners' || endpoint === 'uploadSeparations' || endpoint === 'uploadSkillReport' || endpoint === 'uploadPMs' || endpoint === 'uploadGAD' || endpoint === 'uploadBenchReport') {
         headers.delete('Content-Type');
@@ -13,7 +17,7 @@ export const pmApi = createApi({
       return headers;
     },
   }),
-  tagTypes: ['NewJoiners', 'Assignments'],
+  tagTypes: ['NewJoiners', 'Assignments', 'UploadStats'],
   endpoints: (builder) => ({
     uploadEmployees: builder.mutation<UploadResponse, FormData>({
       query: (formData) => ({
@@ -21,7 +25,7 @@ export const pmApi = createApi({
         method: 'POST',
         body: formData,
       }),
-      invalidatesTags: ['NewJoiners'],
+      invalidatesTags: ['NewJoiners', 'UploadStats'],
     }),
     uploadNewJoiners: builder.mutation<UploadResponse, FormData>({
       query: (formData) => ({
@@ -29,7 +33,7 @@ export const pmApi = createApi({
         method: 'POST',
         body: formData,
       }),
-      invalidatesTags: ['NewJoiners'],
+      invalidatesTags: ['NewJoiners', 'UploadStats'],
     }),
     uploadSeparations: builder.mutation<UploadResponse, FormData>({
       query: (formData) => ({
@@ -37,6 +41,7 @@ export const pmApi = createApi({
         method: 'POST',
         body: formData,
       }),
+      invalidatesTags: ['UploadStats'],
     }),
     uploadPMs: builder.mutation<UploadResponse, FormData>({
       query: (formData) => ({
@@ -44,6 +49,7 @@ export const pmApi = createApi({
         method: 'POST',
         body: formData,
       }),
+      invalidatesTags: ['UploadStats'],
     }),
     uploadSkillReport: builder.mutation<UploadResponse, FormData>({
       query: (formData) => ({
@@ -51,6 +57,7 @@ export const pmApi = createApi({
         method: 'POST',
         body: formData,
       }),
+      invalidatesTags: ['UploadStats'],
     }),
     getNewJoiners: builder.query<Employee[], void>({
       query: () => '/employees/new-joiners',
@@ -144,6 +151,7 @@ export const pmApi = createApi({
     }),
     getUploadStats: builder.query<any, void>({
       query: () => '/stats/upload-stats',
+      providesTags: ['UploadStats'],
     }),
     getEmployeesList: builder.query<{ data: any[]; pagination: { page: number; pageSize: number; totalRecords: number; totalPages: number } }, { status?: string; practice?: string; cu?: string; region?: string; page?: number; pageSize?: number }>({
       query: (params) => ({
@@ -288,11 +296,11 @@ export const pmApi = createApi({
     // GAD / Bench uploads
     uploadGAD: builder.mutation<UploadResponse, FormData>({
       query: (formData) => ({ url: '/upload/gad', method: 'POST', body: formData }),
-      invalidatesTags: ['NewJoiners', 'Assignments'],
+      invalidatesTags: ['NewJoiners', 'Assignments', 'UploadStats'],
     }),
     uploadBenchReport: builder.mutation<UploadResponse, FormData>({
       query: (formData) => ({ url: '/upload/bench', method: 'POST', body: formData }),
-      invalidatesTags: ['NewJoiners'],
+      invalidatesTags: ['NewJoiners', 'UploadStats'],
     }),
     // Unmapped employees
     getUnmappedEmployees: builder.query<{ count: number; data: any[]; pagination: any }, { page?: number; pageSize?: number; practice?: string }>({

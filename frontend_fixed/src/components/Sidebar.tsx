@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   Home, Upload, Users, BarChart3, ChevronLeft, ChevronRight,
-  UserCog, Settings, Activity, ShieldAlert
+  UserCog, Activity, ShieldAlert
 } from 'lucide-react';
 import { cn } from '../utils/cn';
 
@@ -14,7 +14,6 @@ const menuItems = [
   { path: '/alignment',     label: 'Alignment',           icon: Activity },
   { path: '/reports',       label: 'Reports & Analytics', icon: BarChart3 },
   { path: '/discrepancy',   label: 'Discrepancy',         icon: ShieldAlert },
-  { path: '/settings',      label: 'Settings',            icon: Settings },
 ];
 
 const routeGroups: Record<string, string[]> = {

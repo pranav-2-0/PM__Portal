@@ -2,12 +2,13 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   AlertTriangle, RefreshCw, ArrowRight, UserCog,
-  TrendingUp, CheckCircle, Search, X, ChevronLeft, ChevronRight, UserCheck, Download, Info, Phone, Mail, User, Briefcase
+  TrendingUp, CheckCircle, Search, X, ChevronLeft, ChevronRight, UserCheck, Download, Mail, User, Briefcase
 } from 'lucide-react';
 import {
   useGetMisalignmentsQuery,
   useGetPMCapacityReportQuery,
   useGetPMsListQuery,
+  useGetPMDetailReportQuery,
   useOverridePMAssignmentMutation,
 } from '../services/pmApi';
 
@@ -27,8 +28,9 @@ export default function Monitoring() {
 
   const tabTypeParam = activeTab === 'all' ? undefined : activeTab;
   const { data: misData, isLoading: misLoading, refetch: refetchMis } = useGetMisalignmentsQuery({ page: misPage, pageSize: misPageSize, type: tabTypeParam });
+  const misCount = misData?.count ?? 0;
   const { data: capacityReport } = useGetPMCapacityReportQuery();
-  const { data: pmsList } = useGetPMsListQuery({ page: 1, pageSize: 500 } as any);
+  const { data: pmsList } = useGetPMsListQuery({ page: 1, pageSize: 10000 } as any);
   const [overridePM, { isLoading: overriding }] = useOverridePMAssignmentMutation();
 
   const [overrideModal, setOverrideModal] = useState<OverrideModal | null>(null);
@@ -37,6 +39,81 @@ export default function Monitoring() {
   const [pmSearch, setPmSearch] = useState('');
   const [overrideStatus, setOverrideStatus] = useState<{ success: boolean; message: string } | null>(null);
   const [pmDetailPopup, setPmDetailPopup] = useState<any | null>(null);
+  const { data: currentPmReport } = useGetPMDetailReportQuery(pmDetailPopup?.pm_id ?? '', {
+    skip: !pmDetailPopup || (pmDetailPopup.detailType !== 'currentPm' && pmDetailPopup.modalMode !== 'compare'),
+  });
+  const { data: suggestedPmReport } = useGetPMDetailReportQuery(pmDetailPopup?.suggested_pm_id ?? '', {
+    skip: !pmDetailPopup || (pmDetailPopup.detailType !== 'suggestedPm' && pmDetailPopup.modalMode !== 'compare'),
+  });
+  const [showDirectReportees, setShowDirectReportees] = useState(false);
+
+  const openDetailPopup = (row: any, type: 'employee' | 'currentPm' | 'suggestedPm') => {
+    setPmDetailPopup({ ...row, modalMode: 'detail', detailType: type });
+    setShowDirectReportees(false);
+  };
+
+  const getBestStatus = (employeeValue: any, currentValue: any, suggestedValue: any) => {
+    const emp = `${employeeValue || ''}`.trim().toLowerCase();
+    const cur = `${currentValue || ''}`.trim().toLowerCase();
+    const sug = `${suggestedValue || ''}`.trim().toLowerCase();
+
+    if (emp && cur && sug && emp === cur && cur === sug) {
+      return { label: 'All', bg: 'bg-sky-50 text-sky-700', border: 'border-sky-100' };
+    }
+    if (cur && sug && cur === sug) {
+      return { label: '= Both', bg: 'bg-sky-50 text-sky-700', border: 'border-sky-100' };
+    }
+    if (sug && emp && sug === emp) {
+      return { label: '✓ Suggested', bg: 'bg-emerald-50 text-emerald-700', border: 'border-emerald-100' };
+    }
+    if (cur && emp && cur === emp) {
+      return { label: 'Current', bg: 'bg-rose-50 text-rose-700', border: 'border-rose-100' };
+    }
+    return { label: '✓ Suggested', bg: 'bg-emerald-50 text-emerald-700', border: 'border-emerald-100' };
+  };
+
+  const formatCapacity = (row: any, type: 'current' | 'suggested') => {
+    if (type === 'current') {
+      const currentPm = capacityReport?.find((pm: any) => pm.employee_id === row.pm_id || pm.employee_id === row.pm_id);
+      const reportees = currentPm?.reportee_count ?? currentPm?.reportees ?? row.pm_reportees ?? row.pm_reportee_count ?? row.reportee_count;
+      const capacity = currentPm?.max_capacity ?? currentPm?.capacity ?? row.pm_capacity ?? row.pm_max_capacity ?? row.max_capacity ?? 10;
+      return reportees != null || capacity != null ? `${reportees ?? '—'}/${capacity ?? '—'}` : '—';
+    }
+    const reportees = row.suggested_pm_reportees ?? row.suggested_pm_reportee_count;
+    const capacity = row.suggested_pm_capacity ?? row.suggested_pm_max_capacity;
+    return reportees != null || capacity != null ? `${reportees ?? '—'}/${capacity ?? '—'}` : '—';
+  };
+
+  const normalizeId = (id: any) => id == null ? '' : String(id).trim();
+
+  const findPmById = (pmId: any) => {
+    const normalizedId = normalizeId(pmId);
+    if (!normalizedId) return null;
+
+    const allPmSources = [
+      ...(pmsList?.data || []),
+      ...(capacityReport || []),
+      ...(misData?.misalignments || []),
+    ];
+
+    return allPmSources.find((pm: any) => {
+      const candidate = normalizeId(pm.employee_id || pm.pm_id || pm.suggested_pm_id || pm.id);
+      return candidate === normalizedId;
+    }) || null;
+  };
+
+  const getPmField = (row: any, source: 'pm' | 'suggested_pm', field: string) => {
+    const pmId = source === 'pm' ? row.pm_id : row.suggested_pm_id;
+    const lookup = findPmById(pmId);
+    const fallback = row[`${source}_${field}`] ?? row[field] ?? row[`${field}`] ?? 'Not provided';
+    return lookup?.[field] ?? fallback ?? 'Not provided';
+  };
+
+  const currentPmEmployees = currentPmReport?.reportees || [];
+  const suggestedPmEmployees = suggestedPmReport?.reportees || [];
+
+  const getReporteeName = (emp: any) => emp.name || emp.employee_name || emp.emp_name || emp.emp_display_name || 'Not provided';
+  const getReporteeId = (emp: any) => emp.employee_id || emp.id || '—';
 
   // ── CSV export ────────────────────────────────────────────────────────────────
   const downloadCSV = async () => {
@@ -77,7 +154,7 @@ export default function Monitoring() {
         chunks.push(new Uint8Array(await res.arrayBuffer()));
       }
 
-      const blob = new Blob(chunks, { type: 'text/csv;charset=utf-8;' });
+      const blob = new Blob(chunks as BlobPart[], { type: 'text/csv;charset=utf-8;' });
       const objectUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.style.display = 'none';
@@ -200,7 +277,7 @@ export default function Monitoring() {
           <button
             onClick={downloadCSV}
             disabled={csvDownloading}
-            title={misData?.count > 1000 ? `Exporting ${misData.count} rows — may take 30–60s` : 'Export to CSV'}
+            title={misCount > 1000 ? `Exporting ${misCount} rows — may take 30–60s` : 'Export to CSV'}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Download size={13} />
@@ -210,7 +287,7 @@ export default function Monitoring() {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
                   </svg>
-                  Downloading{misData?.count > 1000 ? ` ${misData.count} rows…` : '…'}
+                  Downloading{misCount > 1000 ? ` ${misCount} rows…` : '…'}
                 </span>
               : 'Export CSV'
             }
@@ -260,99 +337,83 @@ export default function Monitoring() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="min-w-[900px] w-full text-sm">
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Employee</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Employee Details</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Emp Skill</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Current PM</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">PM Practice / Skill</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Mismatches</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">
-                    <span className="flex items-center gap-1 text-green-700">
-                      <UserCheck size={14} />
-                      Suggested Correct PM
-                    </span>
-                  </th>
+                <tr className="bg-white border-b border-slate-200">
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Employee</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Current PM</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Mismatch</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Suggested PM</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Suggested Reason</th>
                 </tr>
               </thead>
               <tbody>
                 {misData.misalignments.map((row: any, i: number) => (
-                  <tr key={i} className={`border-b border-gray-100 transition-colors ${
-                    row.mismatch_type === 'PM_ON_LEAVE' ? 'bg-yellow-50 hover:bg-yellow-100' :
-                    row.mismatch_type === 'PM_SEPARATED' ? 'bg-red-50 hover:bg-red-100' :
-                    'hover:bg-red-50'
+                  <tr key={i} className={`bg-white border-b border-slate-200 transition-colors hover:bg-slate-50 ${
+                    row.mismatch_type === 'PM_ON_LEAVE' ? 'hover:bg-yellow-50' :
+                    row.mismatch_type === 'PM_SEPARATED' ? 'hover:bg-red-50' :
+                    ''
                   }`}>
-                    <td className="px-4 py-3">
-                      <p className="font-medium text-gray-800">{row.employee_name}</p>
-                      <p className="text-xs text-gray-400">{row.employee_id}</p>
+                    <td className="px-5 py-4 align-top">
+                      <button
+                        type="button"
+                        onClick={() => openDetailPopup(row, 'employee')}
+                        className="text-left w-full"
+                      >
+                        <div className="space-y-1">
+                          <p className="font-semibold text-slate-900 hover:text-blue-700 hover:underline transition-colors">{row.employee_name}</p>
+                          <p className="text-xs text-slate-400">{row.employee_id}</p>
+                        </div>
+                      </button>
                     </td>
-                    <td className="px-4 py-3">
-                      <p className="text-gray-700 font-medium">{row.emp_practice}</p>
-                      {row.emp_sub_practice && <p className="text-xs text-gray-500">{row.emp_sub_practice}</p>}
-                      <p className="text-xs text-gray-400">{row.emp_cu} · {row.emp_region}</p>
+                    <td className="px-5 py-4 align-top">
+                      <button
+                        type="button"
+                        onClick={() => openDetailPopup(row, 'currentPm')}
+                        className="text-left w-full"
+                      >
+                        <div className="space-y-1">
+                          <p className="font-semibold text-slate-900 hover:text-blue-700 hover:underline transition-colors">{row.pm_name}</p>
+                          <p className="text-xs text-slate-400">{row.pm_id}</p>
+                        </div>
+                      </button>
                     </td>
-                    <td className="px-4 py-3">
-                      {row.emp_skill
-                        ? <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded text-xs font-medium">{row.emp_skill}</span>
-                        : <span className="text-xs text-gray-400 italic">—</span>
-                      }
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="font-medium text-gray-800">{row.pm_name}</p>
-                      <p className="text-xs text-gray-400">{row.pm_id}</p>
-                      {row.mismatch_type === 'PM_ON_LEAVE' && row.leave_end_date && (
-                        <span className="text-xs text-yellow-700 font-medium">On leave until {new Date(row.leave_end_date).toLocaleDateString()}</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="text-gray-700 font-medium">{row.pm_practice}</p>
-                      {row.pm_sub_practice && <p className="text-xs text-gray-500">{row.pm_sub_practice}</p>}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                        row.mismatch_type === 'PM_ON_LEAVE' ? 'bg-yellow-100 text-yellow-800' :
-                        row.mismatch_type === 'PM_SEPARATED' ? 'bg-red-100 text-red-800' :
+                    <td className="px-5 py-4 align-top">
+                      <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${
+                        row.mismatch_type === 'PM_ON_LEAVE' ? 'bg-amber-100 text-amber-800' :
+                        row.mismatch_type === 'PM_SEPARATED' ? 'bg-rose-100 text-rose-700' :
                         row.mismatch_type === 'WRONG_SUB_PRACTICE' ? 'bg-orange-100 text-orange-800' :
                         row.mismatch_type === 'WRONG_CU'           ? 'bg-amber-100 text-amber-800' :
                         row.mismatch_type === 'WRONG_REGION'       ? 'bg-amber-100 text-amber-800' :
-                        row.mismatch_type === 'WRONG_GRADE'        ? 'bg-rose-100 text-rose-800' :
+                        row.mismatch_type === 'WRONG_GRADE'        ? 'bg-rose-100 text-rose-700' :
                         'bg-red-100 text-red-700'
                       }`}>
-                        ⚠ {(row.mismatch_type || 'MISMATCH').replace(/_/g, ' ')}
+                        <AlertTriangle size={14} />
+                        {(row.mismatch_type || 'MISMATCH').replace(/_/g, ' ')}
                       </span>
                     </td>
-                    {/* Suggested correct PM */}
-                    <td className="px-4 py-3">
-                      {row.suggested_pm_id ? (
-                        <div className="flex flex-col gap-1.5">
-                          <button
-                            onClick={() => setPmDetailPopup(row)}
-                            className="flex items-center gap-1.5 text-sm font-semibold text-green-700 hover:text-green-900 hover:underline text-left transition-colors group"
-                          >
-                            <UserCheck size={14} className="text-green-500 flex-shrink-0" />
-                            {row.suggested_pm_name}
-                            <Info size={12} className="text-green-400 group-hover:text-green-600 flex-shrink-0" />
-                          </button>
-                          {row.suggested_pm_forced && (
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-orange-100 text-orange-700 border border-orange-300 rounded text-xs font-semibold">
-                              ⚡ Forced Suggested PM
-                            </span>
-                          )}
-                          <button
-                            onClick={() => {
-                              openOverrideModal(row);
-                              setSelectedPmId(row.suggested_pm_id);
-                            }}
-                            className="text-xs font-semibold text-green-700 bg-green-100 hover:bg-green-200 px-2 py-1 rounded transition-colors text-left"
-                          >
-                            Use Suggested PM
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-gray-400 italic">No matching PM found</span>
-                      )}
+                    <td className="px-5 py-4 align-top">
+                      <div className="space-y-1">
+                        <button
+                          type="button"
+                          onClick={() => openDetailPopup(row, 'suggestedPm')}
+                          className="text-left w-full"
+                        >
+                          <p className="font-semibold text-slate-900 hover:text-blue-700 hover:underline transition-colors">{row.suggested_pm_name || '—'}</p>
+                          <p className="text-xs text-slate-400">{row.suggested_pm_id || '—'}</p>
+                        </button>
+                      </div>
+                    </td>
+                    <td className="px-5 py-4 align-top">
+                      <div className="flex flex-col gap-3">
+                        <p className="text-xs text-slate-500">{row.suggested_pm_forced ? 'Forced suggested PM' : 'Best match available'}</p>
+                        <button
+                          onClick={() => setPmDetailPopup({ ...row, modalMode: 'compare' })}
+                          className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+                        >
+                          Compare
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -475,137 +536,318 @@ export default function Monitoring() {
         <QuickLink to="/gad-analysis" label="View GAD Analysis" color="blue" />
       </div>
 
-      {/* PM Detail Popup */}
+      {/* Detail / Comparison Popup */}
       {pmDetailPopup && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setPmDetailPopup(null)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-5">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-green-100 rounded-xl">
-                  <UserCheck size={20} className="text-green-700" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-gray-900">Suggested PM Details</h3>
-                  <p className="text-xs text-gray-500">
-                    {pmDetailPopup.suggested_pm_forced ? '⚡ Forced Suggested PM — §4 Constraint Relaxation' : 'Best matched People Manager'}
-                  </p>
-                </div>
+        <div className="fixed inset-0 z-50 overflow-auto no-scrollbar bg-black/50 p-4" onClick={() => setPmDetailPopup(null)}>
+          <div className={`mx-auto w-full ${pmDetailPopup.modalMode === 'compare' ? 'max-w-4xl' : 'max-w-3xl'} max-h-[calc(100vh-3rem)] overflow-hidden rounded-[28px] bg-white shadow-2xl`} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-slate-200 bg-white">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-900">
+                  {pmDetailPopup.modalMode === 'compare' ? 'PM Alignment Comparison' :
+                    pmDetailPopup.detailType === 'employee' ? 'Employee Details' :
+                    pmDetailPopup.detailType === 'currentPm' ? 'Current PM Details' : 'Suggested PM Details'}
+                </h2>
+                <p className="text-sm text-slate-500 mt-1">
+                  {pmDetailPopup.modalMode === 'compare'
+                    ? 'Compare employee, current PM and suggested PM side by side.'
+                    : 'View full profile information for the selected person.'}
+                </p>
               </div>
-              <button onClick={() => setPmDetailPopup(null)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-                <X size={18} className="text-gray-500" />
+              <button onClick={() => setPmDetailPopup(null)} className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 text-slate-500 hover:bg-slate-100 transition-colors">
+                <X size={18} />
               </button>
             </div>
 
-            <div className="space-y-3">
-              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                <User size={16} className="text-gray-400 flex-shrink-0" />
-                <div>
-                  <p className="text-xs text-gray-500">Full Name</p>
-                  <p className="text-sm font-semibold text-gray-900">{pmDetailPopup.suggested_pm_name}</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                <span className="text-gray-400 text-xs font-mono flex-shrink-0 w-4 text-center">#</span>
-                <div>
-                  <p className="text-xs text-gray-500">CGID / Employee ID</p>
-                  <p className="text-sm font-mono font-semibold text-gray-900">{pmDetailPopup.suggested_pm_id}</p>
-                </div>
-              </div>
-
-              {pmDetailPopup.suggested_pm_email && (
-                <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                  <Mail size={16} className="text-gray-400 flex-shrink-0" />
-                  <div>
-                    <p className="text-xs text-gray-500">Email</p>
-                    <a href={`mailto:${pmDetailPopup.suggested_pm_email}`} className="text-sm font-medium text-indigo-600 hover:underline">
-                      {pmDetailPopup.suggested_pm_email}
-                    </a>
+            {pmDetailPopup.modalMode === 'compare' ? (
+              <div className="overflow-hidden">
+                <div className="grid gap-4 px-6 py-6 md:grid-cols-3">
+                  <div className="rounded-[24px] bg-blue-50 border border-blue-100 p-5">
+                    <p className="text-sm font-semibold uppercase tracking-[0.2em] text-blue-700">Employee</p>
+                    <p className="mt-4 text-lg font-bold text-slate-900">{pmDetailPopup.employee_name}</p>
+                    <p className="mt-2 text-sm text-slate-500">{pmDetailPopup.employee_id}</p>
+                  </div>
+                  <div className="rounded-[24px] bg-amber-50 border border-amber-100 p-5">
+                    <p className="text-sm font-semibold uppercase tracking-[0.2em] text-amber-700">Current PM</p>
+                    <p className="mt-4 text-lg font-bold text-slate-900">{pmDetailPopup.pm_name}</p>
+                    <p className="mt-2 text-sm text-slate-500">{pmDetailPopup.pm_id}</p>
+                  </div>
+                  <div className="rounded-[24px] bg-emerald-50 border border-emerald-100 p-5">
+                    <p className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-700">Suggested PM</p>
+                    <p className="mt-4 text-lg font-bold text-slate-900">{pmDetailPopup.suggested_pm_name}</p>
+                    <p className="mt-2 text-sm text-slate-500">{pmDetailPopup.suggested_pm_id}</p>
                   </div>
                 </div>
-              )}
+                <div className="overflow-y-auto no-scrollbar px-6 pb-6" style={{ maxHeight: '52vh' }}>
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-slate-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Field</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Employee</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Current PM</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Suggested PM</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Best</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                      {[
+                        ['Practice', pmDetailPopup.emp_practice, pmDetailPopup.pm_practice, pmDetailPopup.suggested_pm_practice],
+                        ['Region', pmDetailPopup.emp_region, pmDetailPopup.pm_region, pmDetailPopup.suggested_pm_region],
+                        ['BU (CU)', pmDetailPopup.emp_cu, pmDetailPopup.pm_cu, pmDetailPopup.suggested_pm_cu],
+                        ['Account', pmDetailPopup.emp_account, pmDetailPopup.pm_account, pmDetailPopup.suggested_pm_account],
+                        ['Skill', pmDetailPopup.emp_skill, pmDetailPopup.pm_skill, pmDetailPopup.suggested_pm_skill],
+                        ['Capacity', 'N/A', formatCapacity(pmDetailPopup, 'current'), formatCapacity(pmDetailPopup, 'suggested')],
+                      ].map(([field, empValue, currentValue, suggestedValue], idx) => {
+                        const best = getBestStatus(empValue, currentValue, suggestedValue);
+                        return (
+                          <tr key={idx} className="bg-white">
+                            <td className="px-4 py-4 text-sm font-semibold text-slate-700">{field}</td>
+                            <td className="px-4 py-4 text-sm text-slate-600">{empValue || '—'}</td>
+                            <td className="px-4 py-4 text-sm text-slate-600">{currentValue || '—'}</td>
+                            <td className="px-4 py-4 text-sm text-slate-600">{suggestedValue || '—'}</td>
+                            <td className="px-4 py-4">
+                              <span className={`inline-flex rounded-full border px-3 py-1 text-sm font-semibold ${best.bg} ${best.border}`}>
+                                {best.label}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
 
-              {pmDetailPopup.suggested_pm_phone && (
-                <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                  <Phone size={16} className="text-gray-400 flex-shrink-0" />
-                  <div>
-                    <p className="text-xs text-gray-500">Phone</p>
-                    <p className="text-sm font-medium text-gray-900">{pmDetailPopup.suggested_pm_phone}</p>
+                <div className="px-6 pb-6">
+                  <div className="flex flex-col gap-4">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <h3 className="text-sm font-semibold text-slate-900">Employees under current and suggested PM</h3>
+                        <p className="text-xs text-slate-500">Toggle reportee lists for both PMs in this comparison view.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowDirectReportees(prev => !prev)}
+                        className="rounded-full border border-slate-300 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 transition"
+                      >
+                        {showDirectReportees ? 'Hide Direct Reportees' : 'Show Direct Reportees'}
+                      </button>
+                    </div>
+
+                    {showDirectReportees && (
+                      <div className="grid gap-4 lg:grid-cols-2">
+                        <section className="rounded-3xl bg-white p-5 shadow-sm">
+                          <div className="mb-4">
+                            <p className="text-sm font-semibold text-slate-900">Current PM Reportees</p>
+                            <p className="text-xs text-slate-500">{currentPmEmployees.length} found in current dataset</p>
+                          </div>
+                          {currentPmEmployees.length > 0 ? currentPmEmployees.map((emp: any, idx: number) => (
+                            <div key={idx} className="rounded-3xl border border-slate-200 bg-slate-50 p-4 mb-3">
+                              <p className="text-sm font-semibold text-slate-900">{getReporteeName(emp)}</p>
+                              <p className="text-xs text-slate-500">{getReporteeId(emp)}</p>
+                              {(emp.emp_practice || emp.practice || emp.emp_sub_practice || emp.practice || emp.emp_grade || emp.grade) && (
+                                <p className="text-xs text-slate-500 mt-2">
+                                  {emp.emp_practice || emp.practice ? (emp.emp_practice || emp.practice) : ''}
+                                  {emp.emp_sub_practice ? ` / ${emp.emp_sub_practice}` : ''}
+                                  {emp.emp_grade || emp.grade ? ` • ${emp.emp_grade || emp.grade}` : ''}
+                                </p>
+                              )}
+                            </div>
+                          )) : (
+                            <p className="text-sm text-slate-500">No reportees found for current PM in the current dataset.</p>
+                          )}
+                        </section>
+                        <section className="rounded-3xl bg-white p-5 shadow-sm">
+                          <div className="mb-4">
+                            <p className="text-sm font-semibold text-slate-900">Suggested PM Reportees</p>
+                            <p className="text-xs text-slate-500">{suggestedPmEmployees.length} found in current dataset</p>
+                          </div>
+                          {suggestedPmEmployees.length > 0 ? suggestedPmEmployees.map((emp: any, idx: number) => (
+                            <div key={idx} className="rounded-3xl border border-slate-200 bg-slate-50 p-4 mb-3">
+                              <p className="text-sm font-semibold text-slate-900">{getReporteeName(emp)}</p>
+                              <p className="text-xs text-slate-500">{getReporteeId(emp)}</p>
+                              {(emp.emp_practice || emp.practice || emp.emp_sub_practice || emp.practice || emp.emp_grade || emp.grade) && (
+                                <p className="text-xs text-slate-500 mt-2">
+                                  {emp.emp_practice || emp.practice ? (emp.emp_practice || emp.practice) : ''}
+                                  {emp.emp_sub_practice ? ` / ${emp.emp_sub_practice}` : ''}
+                                  {emp.emp_grade || emp.grade ? ` • ${emp.emp_grade || emp.grade}` : ''}
+                                </p>
+                              )}
+                            </div>
+                          )) : (
+                            <p className="text-sm text-slate-500">No reportees found for suggested PM in the current dataset.</p>
+                          )}
+                        </section>
+                      </div>
+                    )}
                   </div>
                 </div>
-              )}
 
-              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                <Briefcase size={16} className="text-gray-400 flex-shrink-0" />
-                <div>
-                  <p className="text-xs text-gray-500">Practice</p>
-                  <p className="text-sm font-semibold text-gray-900">{pmDetailPopup.suggested_pm_practice}</p>
-                  {pmDetailPopup.suggested_pm_sub_practice && (
-                    <p className="text-xs text-gray-500 mt-0.5">{pmDetailPopup.suggested_pm_sub_practice}</p>
+                <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-5">
+                  <button
+                    onClick={() => {
+                      setPmDetailPopup(null);
+                      openOverrideModal(pmDetailPopup);
+                      setSelectedPmId(pmDetailPopup.suggested_pm_id);
+                    }}
+                    className="rounded-lg border border-slate-200 bg-slate-50 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                  >
+                    Use Suggested PM
+                  </button>
+                  <button
+                    onClick={() => setPmDetailPopup(null)}
+                    className="rounded-lg bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="overflow-y-auto no-scrollbar px-6 pb-6" style={{ maxHeight: '70vh' }}>
+                <div className="bg-blue-600 px-6 py-7 text-white">
+                  <div className="flex items-center gap-4">
+                    <div className="h-16 w-16 rounded-full bg-white/20 flex items-center justify-center text-2xl font-bold text-white">
+                      {pmDetailPopup.modalMode === 'compare'
+                        ? '?'
+                        : pmDetailPopup.detailType === 'employee'
+                          ? (pmDetailPopup.employee_name || 'U').charAt(0).toUpperCase()
+                          : (pmDetailPopup.detailType === 'currentPm' ? (pmDetailPopup.pm_name || 'P') : (pmDetailPopup.suggested_pm_name || 'S')).charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.3em] text-slate-200">Profile</p>
+                      <p className="mt-2 text-xl font-semibold">{pmDetailPopup.detailType === 'employee' ? pmDetailPopup.employee_name : pmDetailPopup.detailType === 'currentPm' ? pmDetailPopup.pm_name : pmDetailPopup.suggested_pm_name}</p>
+                      <p className="text-sm text-slate-100 mt-1">ID: {pmDetailPopup.detailType === 'employee' ? pmDetailPopup.employee_id : pmDetailPopup.detailType === 'currentPm' ? pmDetailPopup.pm_id : pmDetailPopup.suggested_pm_id}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-5 bg-slate-50 px-6 py-6">
+                  <section className="rounded-3xl bg-white p-5 shadow-sm">
+                    <div className="flex items-center gap-3 border-b border-slate-200 pb-3">
+                      <Mail size={18} className="text-blue-600" />
+                      <h3 className="text-sm font-semibold text-slate-900">Contact Information</h3>
+                    </div>
+                    <div className="mt-4 grid gap-3">
+                      <div>
+                        <p className="text-xs text-slate-500">Email</p>
+                        <p className="text-sm font-semibold text-slate-900">{pmDetailPopup.detailType === 'employee' ? pmDetailPopup.employee_email : pmDetailPopup.detailType === 'currentPm' ? getPmField(pmDetailPopup, 'pm', 'email') : getPmField(pmDetailPopup, 'suggested_pm', 'email')}</p>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="rounded-3xl bg-white p-5 shadow-sm">
+                    <div className="flex items-center gap-3 border-b border-slate-200 pb-3">
+                      <Briefcase size={18} className="text-blue-600" />
+                      <h3 className="text-sm font-semibold text-slate-900">Organization Information</h3>
+                    </div>
+                    <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <p className="text-xs text-slate-500">Practice</p>
+                        <p className="text-sm font-semibold text-slate-900">{pmDetailPopup.detailType === 'employee' ? pmDetailPopup.emp_practice : pmDetailPopup.detailType === 'currentPm' ? pmDetailPopup.pm_practice : pmDetailPopup.suggested_pm_practice || 'Not provided'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500">Sub-Practice</p>
+                        <p className="text-sm font-semibold text-slate-900">{pmDetailPopup.detailType === 'employee' ? pmDetailPopup.emp_sub_practice || 'Not provided' : pmDetailPopup.detailType === 'currentPm' ? getPmField(pmDetailPopup, 'pm', 'sub_practice') : getPmField(pmDetailPopup, 'suggested_pm', 'sub_practice')}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500">Region</p>
+                        <p className="text-sm font-semibold text-slate-900">{pmDetailPopup.detailType === 'employee' ? pmDetailPopup.emp_region : pmDetailPopup.detailType === 'currentPm' ? pmDetailPopup.pm_region : pmDetailPopup.suggested_pm_region || 'Not provided'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500">BU / CU</p>
+                        <p className="text-sm font-semibold text-slate-900">{pmDetailPopup.detailType === 'employee' ? pmDetailPopup.emp_cu : pmDetailPopup.detailType === 'currentPm' ? getPmField(pmDetailPopup, 'pm', 'cu') : getPmField(pmDetailPopup, 'suggested_pm', 'cu')}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500">Account</p>
+                        <p className="text-sm font-semibold text-slate-900">{pmDetailPopup.detailType === 'employee' ? pmDetailPopup.emp_account || 'Not provided' : pmDetailPopup.detailType === 'currentPm' ? getPmField(pmDetailPopup, 'pm', 'account') : getPmField(pmDetailPopup, 'suggested_pm', 'account')}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500">Grade</p>
+                        <p className="text-sm font-semibold text-slate-900">{pmDetailPopup.detailType === 'employee' ? pmDetailPopup.emp_grade || 'Not provided' : pmDetailPopup.detailType === 'currentPm' ? getPmField(pmDetailPopup, 'pm', 'grade') : getPmField(pmDetailPopup, 'suggested_pm', 'grade')}</p>
+                      </div>
+                      {pmDetailPopup.detailType !== 'employee' && (
+                        <div>
+                          <p className="text-xs text-slate-500">Capacity</p>
+                          <p className="text-sm font-semibold text-slate-900">{pmDetailPopup.detailType === 'currentPm' ? formatCapacity(pmDetailPopup, 'current') : formatCapacity(pmDetailPopup, 'suggested')}</p>
+                        </div>
+                      )}
+                    </div>
+                  </section>
+
+                  <section className="rounded-3xl bg-white p-5 shadow-sm">
+                    <div className="flex items-center gap-3 border-b border-slate-200 pb-3">
+                      <UserCheck size={18} className="text-blue-600" />
+                      <h3 className="text-sm font-semibold text-slate-900">Skills & Competencies</h3>
+                    </div>
+                    <div className="mt-4">
+                      <p className="text-xs text-slate-500">Skill</p>
+                      <p className="text-sm font-semibold text-slate-900">{pmDetailPopup.detailType === 'employee' ? pmDetailPopup.emp_skill || 'Not provided' : pmDetailPopup.detailType === 'currentPm' ? pmDetailPopup.pm_skill || 'Not provided' : pmDetailPopup.suggested_pm_skill || 'Not provided'}</p>
+                    </div>
+                  </section>
+
+                  {(pmDetailPopup.detailType === 'currentPm' || pmDetailPopup.detailType === 'suggestedPm') && (
+                    <section className="rounded-3xl bg-white p-5 shadow-sm">
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 pb-3">
+                        <div className="flex items-center gap-3">
+                          <User size={18} className="text-blue-600" />
+                          <div>
+                            <h3 className="text-sm font-semibold text-slate-900">Employees Under This PM</h3>
+                            <p className="text-xs text-slate-500">Show all reportees available in the current dataset.</p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowDirectReportees(prev => !prev)}
+                          className="rounded-full border border-slate-300 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 transition"
+                        >
+                          {showDirectReportees ? 'Hide Direct Reportees' : 'Show Direct Reportees'}
+                        </button>
+                      </div>
+                      {showDirectReportees && (
+                        <div className="mt-4 space-y-3">
+                          {(pmDetailPopup.detailType === 'currentPm' ? currentPmEmployees : suggestedPmEmployees).length > 0 ?
+                            (pmDetailPopup.detailType === 'currentPm' ? currentPmEmployees : suggestedPmEmployees).map((emp: any, idx: number) => (
+                              <div key={idx} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                                <p className="text-sm font-semibold text-slate-900">{getReporteeName(emp)}</p>
+                                <p className="text-xs text-slate-500">{getReporteeId(emp)}</p>
+                                {(emp.emp_practice || emp.practice || emp.emp_grade || emp.grade) && (
+                                  <p className="text-xs text-slate-500 mt-2">
+                                    {emp.emp_practice || emp.practice ? (emp.emp_practice || emp.practice) : ''}
+                                    {emp.emp_sub_practice ? ` / ${emp.emp_sub_practice}` : ''}
+                                    {emp.emp_grade || emp.grade ? ` • ${emp.emp_grade || emp.grade}` : ''}
+                                  </p>
+                                )}
+                              </div>
+                            )) : (
+                              <p className="text-sm text-slate-500">No direct reportees found in the current dataset.</p>
+                            )}
+                        </div>
+                      )}
+                    </section>
+                  )}
+
+                  {pmDetailPopup.detailType === 'employee' && (
+                    <section className="rounded-3xl bg-white p-5 shadow-sm">
+                      <div className="flex items-center gap-3 border-b border-slate-200 pb-3">
+                        <User size={18} className="text-blue-600" />
+                        <h3 className="text-sm font-semibold text-slate-900">Employment Information</h3>
+                      </div>
+                      <div className="mt-4">
+                        <p className="text-xs text-slate-500">Current PM</p>
+                        <p className="text-sm font-semibold text-slate-900">{pmDetailPopup.pm_name || 'Not provided'}</p>
+                      </div>
+                    </section>
                   )}
                 </div>
-              </div>
 
-              <div className="grid grid-cols-3 gap-2 pt-1">
-                <div className="p-2.5 bg-indigo-50 rounded-lg text-center">
-                  <p className="text-xs text-indigo-500">Grade</p>
-                  <p className="text-sm font-bold text-indigo-800">{pmDetailPopup.suggested_pm_grade || '—'}</p>
-                </div>
-                <div className="p-2.5 bg-blue-50 rounded-lg text-center">
-                  <p className="text-xs text-blue-500">Region</p>
-                  <p className="text-sm font-bold text-blue-800">{pmDetailPopup.suggested_pm_region || '—'}</p>
-                </div>
-                <div className="p-2.5 bg-green-50 rounded-lg text-center">
-                  <p className="text-xs text-green-500">Capacity</p>
-                  <p className="text-sm font-bold text-green-800">{pmDetailPopup.suggested_pm_reportees}/{pmDetailPopup.suggested_pm_capacity}</p>
+                <div className="flex justify-end border-t border-slate-200 px-6 py-5">
+                  <button
+                    onClick={() => setPmDetailPopup(null)}
+                    className="rounded-lg bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
+                  >
+                    Close
+                  </button>
                 </div>
               </div>
-
-              {/* PM Skill */}
-              <div className="flex items-center gap-3 p-3 bg-indigo-50 rounded-lg">
-                <Briefcase size={16} className="text-indigo-400 flex-shrink-0" />
-                <div>
-                  <p className="text-xs text-indigo-500">PM Skill</p>
-                  <p className="text-sm font-semibold text-indigo-900">
-                    {pmDetailPopup.suggested_pm_skill || '—'}
-                  </p>
-                </div>
-              </div>
-
-              {/* Skill match indicator vs employee */}
-              {pmDetailPopup.emp_skill && pmDetailPopup.suggested_pm_skill && (
-                <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium ${
-                  pmDetailPopup.emp_skill?.toLowerCase() === pmDetailPopup.suggested_pm_skill?.toLowerCase()
-                    ? 'bg-green-50 text-green-700 border border-green-200'
-                    : 'bg-yellow-50 text-yellow-700 border border-yellow-200'
-                }`}>
-                  {pmDetailPopup.emp_skill?.toLowerCase() === pmDetailPopup.suggested_pm_skill?.toLowerCase()
-                    ? '✓ Exact skill match — PM skill aligns with employee skill'
-                    : `⚠ Skill diff — Employee: "${pmDetailPopup.emp_skill}" · PM: "${pmDetailPopup.suggested_pm_skill}"`
-                  }
-                </div>
-              )}
-            </div>
-
-            <div className="flex gap-2 mt-5">
-              <button
-                onClick={() => {
-                  setPmDetailPopup(null);
-                  openOverrideModal(pmDetailPopup);
-                  setSelectedPmId(pmDetailPopup.suggested_pm_id);
-                }}
-                className="flex-1 py-2.5 text-sm font-semibold text-white rounded-lg transition-all"
-                style={{ background: 'linear-gradient(135deg, #12ABDB 0%, #0070AD 100%)' }}
-              >
-                Use This PM
-              </button>
-              <button
-                onClick={() => setPmDetailPopup(null)}
-                className="px-5 py-2.5 border border-gray-300 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
-              >
-                Close
-              </button>
-            </div>
+            )}
           </div>
         </div>
       )}

@@ -4,7 +4,7 @@ import { useGetPMsListQuery, useGetPracticeFiltersQuery, useGetPMReportSummaryQu
 import {
   FileText, Filter, Download, Loader2, UserCog, Users, AlertTriangle,
   TrendingUp, Calendar, ChevronDown, ChevronUp, Search, RefreshCw, Award,
-  Briefcase, MapPin, Activity, Eye, BarChart3, X
+  Briefcase, MapPin, Activity, Eye, X
 } from 'lucide-react';
 import { format, differenceInDays } from 'date-fns';
 import Pagination from '../components/Pagination';

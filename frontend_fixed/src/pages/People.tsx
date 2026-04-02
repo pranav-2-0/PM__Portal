@@ -1,7 +1,7 @@
 import TabBar from '../components/TabBar';
 import { useState } from 'react';
 import { useGetEmployeesListQuery, useGetNewJoinersListQuery, useFindPMForEmployeeMutation, useAssignPMMutation, useGetSeparationsListQuery } from '../services/pmApi';
-import { Users, Search, Filter, Download, Loader2, AlertCircle, UserPlus, Award, CheckCircle2, UserX, AlertTriangle, UploadCloud } from 'lucide-react';
+import { Users, Search, Filter, Download, Loader2, AlertCircle, UserPlus, CheckCircle2, UserX, AlertTriangle, UploadCloud } from 'lucide-react';
 import Pagination from '../components/Pagination';
 import Table from '../components/Table';
 import { format, differenceInDays } from 'date-fns';
@@ -270,9 +270,10 @@ function NewJoiners() {
     setSearching(true); setSelectedEmployee(employee);
     try {
       const result = await findPM(employee.employee_id).unwrap();
-      setPmMatches(result.matches || []);
-      setFlagSummary(result.flag_summary || null);
-      setDatasetScope(result.dataset_scope || null);
+      const resultData = result as any;
+      setPmMatches(resultData.matches || []);
+      setFlagSummary(resultData.flag_summary || null);
+      setDatasetScope(resultData.dataset_scope || null);
       setSelectedMatch(null);
     }
     catch (error) { console.error('Error finding PM:', error); }

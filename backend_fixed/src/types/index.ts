@@ -156,10 +156,6 @@ export interface MatchOutput {
   /** 'PM_RESIGNATION_OVERRIDE' when override was activated */
   overrideReason?:   string;
 }
-  tiebreakerApplied: string | null;
-  score:             number;
-  confidence:        MatchConfidence;
-}
 
 export interface SeparationReport {
   id?: number;

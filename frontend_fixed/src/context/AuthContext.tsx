@@ -1,43 +1,31 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useState } from "react";
 import { authService } from "../services/authService";
 
 interface AuthContextType {
   isAuthenticated: boolean;
   user: any | null;
-  login: () => void;
+  login: (user: any) => void;
   logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(
-    !!localStorage.getItem("authToken")
+  const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem("authToken"));
+  const [user, setUser] = useState<any | null>(
+    JSON.parse(localStorage.getItem("user") || "null")
   );
 
-  const [user, setUser] = useState<any | null>(null);
-
-  // Load user automatically
-  useEffect(() => {
-    const loadUser = async () => {
-      if (localStorage.getItem("authToken")) {
-        try {
-          const me = await authService.getCurrentUser();
-          setUser(me);
-        } catch (e) {
-          console.log("User load failed");
-        }
-      }
-    };
-    loadUser();
-  }, [isAuthenticated]);
-
-  const login = () => setIsAuthenticated(true);
+  const login = (userData: any) => {
+    setIsAuthenticated(true);
+    setUser(userData);
+    localStorage.setItem("user", JSON.stringify(userData));
+  };
 
   const logout = () => {
     authService.logout();
-    setUser(null);
     setIsAuthenticated(false);
+    setUser(null);
   };
 
   return (
