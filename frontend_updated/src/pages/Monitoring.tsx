@@ -22,11 +22,11 @@ interface OverrideModal {
 export default function Monitoring() {
   const [misPage, setMisPage] = useState(1);
   const [misPageSize, setMisPageSize] = useState(50);
-  const [activeTab, setActiveTab] = useState<'all' | 'WRONG_PRACTICE' | 'WRONG_SUB_PRACTICE' | 'WRONG_CU' | 'WRONG_REGION' | 'WRONG_GRADE' | 'PM_ON_LEAVE' | 'PM_SEPARATED'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'WRONG_PRACTICE' | 'WRONG_SUB_PRACTICE' | 'WRONG_CU' | 'WRONG_REGION' | 'WRONG_GRADE' | 'PM_ON_LEAVE' | 'PM_SEPARATED' | 'NO_SUGGESTED_PM'>('all');
   const [csvDownloading, setCsvDownloading] = useState(false);
 
   const tabTypeParam = activeTab === 'all' ? undefined : activeTab;
-  const { data: misData, isLoading: misLoading, refetch: refetchMis } = useGetMisalignmentsQuery({ page: misPage, pageSize: misPageSize, type: tabTypeParam });
+  const { data: misData, isLoading: misLoading, isFetching: misFetching, refetch: refetchMis } = useGetMisalignmentsQuery({ page: misPage, pageSize: misPageSize, type: tabTypeParam });
   const { data: capacityReport } = useGetPMCapacityReportQuery();
   const { data: pmsList } = useGetPMsListQuery({ page: 1, pageSize: 500 } as any);
   const [overridePM, { isLoading: overriding }] = useOverridePMAssignmentMutation();
@@ -82,7 +82,7 @@ export default function Monitoring() {
       const a = document.createElement('a');
       a.style.display = 'none';
       a.href = objectUrl;
-      a.download = `misalignments_${activeTab || 'all'}.csv`;
+      a.download = `misalignments_${activeTab === 'NO_SUGGESTED_PM' ? 'no_suggested_pm' : activeTab || 'all'}.csv`;
       document.body.appendChild(a);
       a.click();
       setTimeout(() => {
@@ -217,7 +217,7 @@ export default function Monitoring() {
           </button>
         </div>
 
-        {/* 5-tab filter */}
+        {/* Filter tabs — uniform blue style for all buttons */}
         <div className="flex flex-wrap gap-1 mb-5 border-b border-gray-200 pb-3">
           {([
             { key: 'all', label: 'All Issues' },
@@ -228,6 +228,7 @@ export default function Monitoring() {
             { key: 'WRONG_GRADE',        label: 'Wrong Grade' },
             { key: 'PM_ON_LEAVE', label: 'PM On Leave' },
             { key: 'PM_SEPARATED', label: 'PM Resigned' },
+            { key: 'NO_SUGGESTED_PM', label: 'No Suggested PM' },
           ] as const).map(tab => (
             <button
               key={tab.key}
@@ -243,10 +244,12 @@ export default function Monitoring() {
           ))}
         </div>
 
-        <p className="text-sm text-gray-500 mb-4">
-          Employees whose current PM is misaligned by <strong>Practice</strong>, <strong>Sub-Practice</strong>, or the PM is <strong>On Leave / Resigned</strong>. Use <strong>Override PM</strong>
-          to reassign with an audit-logged justification.
-        </p>
+        {activeTab !== 'NO_SUGGESTED_PM' && (
+          <p className="text-sm text-gray-500 mb-4">
+            Employees whose current PM is misaligned by <strong>Practice</strong>, <strong>Sub-Practice</strong>, or the PM is <strong>On Leave / Resigned</strong>. Use <strong>Override PM</strong>
+            to reassign with an audit-logged justification.
+          </p>
+        )}
 
         {misLoading ? (
           <div className="flex items-center justify-center h-32">
@@ -254,12 +257,31 @@ export default function Monitoring() {
           </div>
         ) : !misData?.misalignments?.length ? (
           <div className="text-center py-10 text-gray-500">
-            <CheckCircle size={40} className="mx-auto mb-2 text-green-400" />
-            <p className="font-medium">No misalignments detected</p>
-            <p className="text-sm mt-1">All employees are aligned with their PM's practice, CU, and region.</p>
+            {misFetching ? (
+              <div className="flex items-center justify-center h-32">
+                <div className="animate-spin rounded-full h-10 w-10 border-4 border-blue-500 border-t-transparent" />
+              </div>
+            ) : (
+              <>
+                <CheckCircle size={40} className="mx-auto mb-2 text-green-400" />
+                <p className="font-medium">No misalignments detected</p>
+                <p className="text-sm mt-1">All employees are aligned with their PM's practice, CU, and region.</p>
+              </>
+            )}
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="relative">
+            {/* Smooth fetch overlay — keeps stale data visible while new data loads */}
+            {misFetching && (
+              <div className="absolute inset-0 z-10 pointer-events-none">
+                <div className="h-0.5 w-full bg-blue-100 overflow-hidden rounded-full">
+                  <div className="h-full bg-blue-500 animate-[progress_1.2s_ease-in-out_infinite]"
+                    style={{ animation: 'shimmer 1.2s ease-in-out infinite', background: 'linear-gradient(90deg, transparent 0%, #3b82f6 50%, transparent 100%)', backgroundSize: '200% 100%' }}
+                  />
+                </div>
+              </div>
+            )}
+          <div className={`overflow-x-auto transition-opacity duration-200 ${misFetching ? 'opacity-60' : 'opacity-100'}`}>
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
@@ -358,6 +380,7 @@ export default function Monitoring() {
                 ))}
               </tbody>
             </table>
+          </div>
           </div>
         )}
 

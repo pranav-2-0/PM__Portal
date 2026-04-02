@@ -28,6 +28,8 @@ const generateDiscrepancySnapshot = async (triggeredBy: string) => {
     const snap = await discrepancyReportService.generateSnapshot(triggeredBy);
     // Refresh alignment materialized view non-blocking after every upload
     refreshAlignmentCache().catch(() => {});
+    // Invalidate the NO_SUGGESTED_PM in-memory count cache so next request recomputes
+    _noSugCountCache.clear();
     return snap.summary;
   } catch (err: any) {
     logger.warn('Discrepancy snapshot generation failed (non-blocking)', err);
@@ -1634,6 +1636,12 @@ export const updateMatchingWeights = async (req: Request, res: Response) => {
 // Misalignment Detection
 // ============================================
 
+// ── In-memory TTL cache for NO_SUGGESTED_PM count (avoids running the
+//    full dual-pass LATERAL query twice per request — the most expensive path).
+//    Cache key = `${practice}`. TTL = 60 seconds.
+const _noSugCountCache = new Map<string, { count: number; ts: number }>();
+const NO_SUG_CACHE_TTL_MS = 60_000;
+
 export const getMisalignments = async (req: Request, res: Response) => {
   try {
     const { page = '1', pageSize = '50', type, practice } = req.query as any;
@@ -1641,20 +1649,290 @@ export const getMisalignments = async (req: Request, res: Response) => {
     const pageSizeNum = parseInt(pageSize as string);
     const offset = (pageNum - 1) * pageSizeNum;
 
-    const typeFilter = type && type !== 'all' ? `AND mismatch_type = '${(type as string).replace(/'/g, "''")}'` : '';
+    const isNoSuggestedPM = type === 'NO_SUGGESTED_PM';
+    const typeFilter = type && type !== 'all' && !isNoSuggestedPM ? `AND mismatch_type = '${(type as string).replace(/'/g, "''")}'` : '';
     const pf = practice && practice !== 'All' ? practice as string : null;
     const practiceClause = pf ? `AND e.practice = '${pf.replace(/'/g, "''")}'` : '';
 
-    // ── OPTIMISED ─────────────────────────────────────────────────────────────
-    // Previously: two full CTE executions (one for COUNT, one for data).
-    // Now: single CTE execution with COUNT(*) OVER() window function.
-    // grade_order VALUES replaced by JOIN grade_levels (indexed table).
-    // hasSuggestedPM changed from a per-row correlated EXISTS sub-select to
-    // a join on mv_practice_has_eligible_pm (one lookup per row instead of a
-    // full people_managers scan per row).
-    // pm_separated pre-aggregated into a CTE to avoid repeated EXISTS scans.
+    // ── QUERY STRATEGY ────────────────────────────────────────────────────────
+    // Regular filters (All, WRONG_PRACTICE, etc.):
+    //   Fast path — paginate BEFORE the LATERAL so the expensive suggestion
+    //   scoring only runs on ~50 rows. COUNT(*) OVER() gives the exact total.
+    //
+    // NO_SUGGESTED_PM:
+    //   We cannot paginate before the LATERAL because we don't yet know which
+    //   rows will have suggested_pm_id IS NULL. Instead we run the LATERAL over
+    //   all misaligned rows, filter to no-suggestion rows, then COUNT(*) OVER()
+    //   + LIMIT/OFFSET in one single pass. This is one query, exact count, and
+    //   the result matches the CSV export exactly — fixing the UI/CSV divergence.
     // ─────────────────────────────────────────────────────────────────────────
-    const result = await pool.query(`
+
+    // Shared CTE prefix (same for both paths)
+    const sharedCTEPrefix = `
+      WITH
+      pm_separated AS (
+        SELECT DISTINCT employee_id
+        FROM separation_reports
+        WHERE (separation_type ILIKE '%Resignation%' OR separation_type ILIKE '%Retirement%')
+          AND lwd >= CURRENT_DATE - INTERVAL '90 days'
+      ),
+      all_misaligned AS (
+        SELECT
+          e.employee_id,
+          e.name              AS employee_name,
+          e.email             AS employee_email,
+          e.practice          AS emp_practice,
+          e.sub_practice      AS emp_sub_practice,
+          e.cu                AS emp_cu,
+          e.region            AS emp_region,
+          e.grade             AS emp_grade,
+          e.skill             AS emp_skill,
+          e.location          AS emp_location,
+          e.account           AS emp_account,
+          pm.employee_id      AS pm_id,
+          pm.name             AS pm_name,
+          pm.email            AS pm_email,
+          pm.practice         AS pm_practice,
+          pm.sub_practice     AS pm_sub_practice,
+          pm.cu               AS pm_cu,
+          pm.region           AS pm_region,
+          pm.skill            AS pm_skill,
+          pm.leave_start_date,
+          pm.leave_end_date,
+          CASE
+            WHEN pm.leave_end_date IS NOT NULL AND pm.leave_end_date >= CURRENT_DATE THEN 'PM_ON_LEAVE'
+            WHEN ps.employee_id IS NOT NULL                                           THEN 'PM_SEPARATED'
+            WHEN e.practice IS DISTINCT FROM pm.practice                              THEN 'WRONG_PRACTICE'
+            WHEN e.sub_practice IS NOT NULL AND pm.sub_practice IS NOT NULL
+                 AND e.sub_practice IS DISTINCT FROM pm.sub_practice                  THEN 'WRONG_SUB_PRACTICE'
+            WHEN e.cu IS NOT NULL AND pm.cu IS NOT NULL
+                 AND e.cu IS DISTINCT FROM pm.cu AND e.practice = pm.practice         THEN 'WRONG_CU'
+            WHEN e.region IS NOT NULL AND pm.region IS NOT NULL
+                 AND e.region IS DISTINCT FROM pm.region AND e.practice = pm.practice THEN 'WRONG_REGION'
+            WHEN e.grade IS NOT NULL AND pm.grade IS NOT NULL
+                 AND COALESCE(gl_pm.lvl, 0) <> COALESCE(gl_e.lvl, 0) + 1            THEN 'WRONG_GRADE'
+            ELSE 'MISMATCH'
+          END AS mismatch_type
+        FROM employees e
+        JOIN people_managers pm    ON e.current_pm_id   = pm.employee_id
+        LEFT JOIN grade_levels gl_pm ON gl_pm.grade     = UPPER(TRIM(pm.grade))
+        LEFT JOIN grade_levels gl_e  ON gl_e.grade      = UPPER(TRIM(e.grade))
+        LEFT JOIN pm_separated ps    ON ps.employee_id  = pm.employee_id
+        JOIN mv_practice_has_eligible_pm mhep ON mhep.practice = e.practice
+        WHERE e.status = 'active' AND e.is_frozen = false ${practiceClause}
+          AND (
+            (pm.leave_end_date IS NOT NULL AND pm.leave_end_date >= CURRENT_DATE)
+            OR ps.employee_id IS NOT NULL
+            OR e.practice IS DISTINCT FROM pm.practice
+            OR (e.sub_practice IS NOT NULL AND pm.sub_practice IS NOT NULL
+                AND e.sub_practice IS DISTINCT FROM pm.sub_practice)
+            OR (e.cu IS NOT NULL AND pm.cu IS NOT NULL AND e.cu IS DISTINCT FROM pm.cu AND e.practice = pm.practice)
+            OR (e.region IS NOT NULL AND pm.region IS NOT NULL AND e.region IS DISTINCT FROM pm.region AND e.practice = pm.practice)
+            OR (e.grade IS NOT NULL AND pm.grade IS NOT NULL
+                AND COALESCE(gl_pm.lvl, 0) <> COALESCE(gl_e.lvl, 0) + 1)
+          )
+          AND (
+            ps.employee_id IS NOT NULL
+            OR mhep.practice IS NOT NULL
+          )
+      )`;
+
+    // Shared LATERAL suggestion subquery (identical logic in both paths)
+    const lateralSugSQL = (rowAlias: string) => `
+      LEFT JOIN LATERAL (
+        WITH grade_vals(g, lvl) AS (
+          SELECT grade, lvl FROM grade_levels
+        ),
+        emp_lvl AS (
+          SELECT COALESCE(gv.lvl, 0) AS lvl
+          FROM grade_vals gv WHERE gv.g = UPPER(TRIM(${rowAlias}.emp_grade))
+        ),
+        skill_clusters AS (
+          SELECT LOWER(sr.skill_name) AS skill_name,
+                 LOWER(sr.skill_cluster) AS skill_cluster
+          FROM skill_repository sr WHERE sr.practice = ${rowAlias}.emp_practice
+        ),
+        eligible AS (
+          SELECT pm2.*,
+                 EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - pm2.created_at)) / 86400 AS tenure_days,
+                 COALESCE(gv.lvl, 0) AS pm_lvl
+          FROM people_managers pm2
+          JOIN grade_vals gv ON gv.g = UPPER(TRIM(pm2.grade))
+          WHERE pm2.is_active       = true
+            AND pm2.reportee_count <= 10
+            AND pm2.practice        = ${rowAlias}.emp_practice
+            AND pm2.employee_id    <> ${rowAlias}.pm_id
+            AND NOT (
+                  pm2.leave_start_date IS NOT NULL
+              AND pm2.leave_end_date   IS NOT NULL
+              AND (pm2.leave_end_date - pm2.leave_start_date) > 30
+              AND CURRENT_DATE BETWEEN pm2.leave_start_date AND pm2.leave_end_date
+            )
+            AND COALESCE(gv.lvl, 0) >= 7
+            AND COALESCE(gv.lvl, 0) > (SELECT lvl FROM emp_lvl)
+        ),
+        grade_filtered AS (
+          SELECT e2.*,
+                 CASE WHEN (e2.pm_lvl - (SELECT lvl FROM emp_lvl)) = 1 THEN 1 ELSE 2 END AS escalation_tier
+          FROM eligible e2
+          WHERE (e2.pm_lvl - (SELECT lvl FROM emp_lvl)) = 1
+             OR ((e2.pm_lvl - (SELECT lvl FROM emp_lvl)) BETWEEN 2 AND 3
+                 AND NOT EXISTS (
+                   SELECT 1 FROM eligible e3
+                   WHERE (e3.pm_lvl - (SELECT lvl FROM emp_lvl)) = 1
+                 ))
+        ),
+        scored AS (
+          SELECT gf.*,
+            CASE
+              WHEN ${rowAlias}.emp_skill IS NULL OR gf.skill IS NULL THEN 0
+              WHEN LOWER(TRIM(gf.skill)) = LOWER(TRIM(${rowAlias}.emp_skill)) THEN 15
+              WHEN EXISTS (
+                SELECT 1 FROM skill_clusters sc1
+                JOIN skill_clusters sc2 ON sc1.skill_cluster = sc2.skill_cluster
+                WHERE sc1.skill_name = LOWER(TRIM(gf.skill))
+                  AND sc2.skill_name = LOWER(TRIM(${rowAlias}.emp_skill))
+                  AND sc1.skill_cluster IS NOT NULL
+              ) THEN 8
+              WHEN LOWER(gf.skill) LIKE '%'||LOWER(TRIM(${rowAlias}.emp_skill))||'%'
+                OR LOWER(TRIM(${rowAlias}.emp_skill)) LIKE '%'||LOWER(gf.skill)||'%' THEN 7
+              ELSE 0
+            END AS skill_score,
+            CASE WHEN gf.cu IS NOT NULL AND ${rowAlias}.emp_cu IS NOT NULL
+                      AND gf.cu = ${rowAlias}.emp_cu THEN 35 ELSE 0 END AS cu_score,
+            CASE WHEN gf.region IS NOT NULL AND ${rowAlias}.emp_region IS NOT NULL
+                      AND gf.region = ${rowAlias}.emp_region THEN 20 ELSE 0 END AS region_score,
+            CASE WHEN gf.sub_practice IS NOT NULL AND ${rowAlias}.emp_sub_practice IS NOT NULL
+                      AND gf.sub_practice = ${rowAlias}.emp_sub_practice THEN 20 ELSE 0 END AS sub_score,
+            CASE WHEN gf.account IS NOT NULL AND ${rowAlias}.emp_account IS NOT NULL
+                      AND gf.account = ${rowAlias}.emp_account THEN 10 ELSE 0 END AS acct_score,
+            FLOOR(5.0 * (10 - gf.reportee_count) / 10) AS cap_score
+          FROM grade_filtered gf
+        ),
+        filtered_scored AS (
+          SELECT s.*,
+                 (s.cu_score + s.region_score + s.sub_score
+                  + s.acct_score + s.skill_score + s.cap_score)::int AS total_score
+          FROM scored s
+          WHERE NOT (
+            s.skill IS NOT NULL AND ${rowAlias}.emp_skill IS NOT NULL
+            AND s.skill_score = 0
+            AND LOWER(TRIM(s.skill)) <> LOWER(TRIM(${rowAlias}.emp_skill))
+            AND s.cu_score = 0
+          )
+        ),
+        strict_best AS (
+          SELECT employee_id, name, grade, practice, cu, region, skill, account,
+                 sub_practice, email, reportee_count, tenure_days,
+                 escalation_tier, total_score,
+                 skill_score, cu_score, region_score, acct_score, cap_score,
+                 false AS is_forced_assignment
+          FROM filtered_scored
+          ORDER BY escalation_tier ASC, total_score DESC, reportee_count ASC,
+                   tenure_days DESC,
+                   CASE WHEN account = ${rowAlias}.emp_account THEN 0 ELSE 1 END ASC,
+                   employee_id ASC
+          LIMIT 1
+        ),
+        relaxed_eligible AS (
+          SELECT pm3.*,
+                 EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - pm3.created_at)) / 86400 AS tenure_days,
+                 COALESCE(gv3.lvl, 0) AS pm_lvl
+          FROM people_managers pm3
+          JOIN grade_vals gv3 ON gv3.g = UPPER(TRIM(pm3.grade))
+          WHERE pm3.is_active    = true
+            AND pm3.employee_id <> ${rowAlias}.pm_id
+            AND NOT (
+                  pm3.leave_start_date IS NOT NULL
+              AND pm3.leave_end_date   IS NOT NULL
+              AND (pm3.leave_end_date - pm3.leave_start_date) > 30
+              AND CURRENT_DATE BETWEEN pm3.leave_start_date AND pm3.leave_end_date
+            )
+            AND pm3.reportee_count < COALESCE(pm3.max_capacity, 15)
+            AND ${rowAlias}.mismatch_type = 'PM_SEPARATED'
+            AND NOT EXISTS (SELECT 1 FROM strict_best)
+        ),
+        relaxed_scored AS (
+          SELECT re.*,
+            CASE WHEN re.practice = ${rowAlias}.emp_practice THEN 20 ELSE 0 END AS practice_score,
+            CASE WHEN re.region   = ${rowAlias}.emp_region   THEN 20 ELSE 0 END AS region_score,
+            CASE WHEN re.cu       = ${rowAlias}.emp_cu        THEN 35 ELSE 0 END AS cu_score,
+            CASE
+              WHEN ${rowAlias}.emp_skill IS NULL OR re.skill IS NULL THEN 0
+              WHEN LOWER(TRIM(re.skill)) = LOWER(TRIM(${rowAlias}.emp_skill)) THEN 15
+              WHEN EXISTS (
+                SELECT 1 FROM skill_clusters sc1r
+                JOIN skill_clusters sc2r ON sc1r.skill_cluster = sc2r.skill_cluster
+                WHERE sc1r.skill_name = LOWER(TRIM(re.skill))
+                  AND sc2r.skill_name = LOWER(TRIM(${rowAlias}.emp_skill))
+                  AND sc1r.skill_cluster IS NOT NULL
+              ) THEN 8
+              ELSE 0
+            END AS skill_score,
+            CASE WHEN re.pm_lvl > (SELECT lvl FROM emp_lvl) THEN 5 ELSE 0 END AS grade_score,
+            FLOOR(5.0 * GREATEST(0, COALESCE(re.max_capacity,10) - re.reportee_count)
+                        / COALESCE(re.max_capacity,10)) AS cap_score,
+            1 AS escalation_tier
+          FROM relaxed_eligible re
+        ),
+        relaxed_best AS (
+          SELECT employee_id, name, grade, practice, cu, region, skill, account,
+                 sub_practice, email, reportee_count, tenure_days,
+                 escalation_tier,
+                 (practice_score + region_score + cu_score + skill_score + grade_score + cap_score)::int AS total_score,
+                 skill_score, cu_score, region_score, 0 AS acct_score, cap_score,
+                 true AS is_forced_assignment
+          FROM relaxed_scored
+          ORDER BY total_score DESC, reportee_count ASC, tenure_days DESC, employee_id ASC
+          LIMIT 1
+        )
+        SELECT * FROM strict_best
+        UNION ALL
+        SELECT * FROM relaxed_best
+        WHERE NOT EXISTS (SELECT 1 FROM strict_best)
+        LIMIT 1
+      ) sug ON true`;
+
+    let result: any;
+
+    if (isNoSuggestedPM) {
+      // ── NO_SUGGESTED_PM path ──────────────────────────────────────────────
+      // Run LATERAL over ALL misaligned rows, filter to no-suggestion rows,
+      // THEN paginate with COUNT(*) OVER(). One pass, exact count, matches CSV.
+      result = await pool.query(`
+        ${sharedCTEPrefix},
+        filtered AS (
+          SELECT * FROM all_misaligned
+        ),
+        all_with_suggested AS (
+          SELECT
+            f.*,
+            sug.employee_id    AS suggested_pm_id,
+            sug.name           AS suggested_pm_name,
+            sug.grade          AS suggested_pm_grade,
+            sug.practice       AS suggested_pm_practice,
+            sug.cu             AS suggested_pm_cu,
+            sug.region         AS suggested_pm_region,
+            sug.skill          AS suggested_pm_skill,
+            sug.reportee_count AS suggested_pm_reportees,
+            10                 AS suggested_pm_capacity,
+            sug.is_forced_assignment AS suggested_pm_forced
+          FROM filtered f
+          ${lateralSugSQL('f')}
+        ),
+        no_sug_filtered AS (
+          SELECT * FROM all_with_suggested
+          WHERE suggested_pm_id IS NULL
+        )
+        SELECT *, COUNT(*) OVER() AS total_count
+        FROM no_sug_filtered
+        ORDER BY employee_name
+        LIMIT $1 OFFSET $2
+      `, [pageSizeNum, offset]);
+    } else {
+      // ── Fast path for all other filters ──────────────────────────────────
+      // Paginate BEFORE LATERAL so scoring only runs on ~50 rows.
+      result = await pool.query(`
       WITH
       -- Pre-aggregate resigned PMs (avoids correlated EXISTS per employee row)
       pm_separated AS (
@@ -1739,8 +2017,9 @@ export const getMisalignments = async (req: Request, res: Response) => {
         FROM filtered
         ORDER BY employee_name
         LIMIT $1 OFFSET $2
-      )
+      ),
       -- Step 3: LATERAL suggested PM only over the ~50 paged rows
+      with_suggested AS (
       SELECT
         paged.*,
         sug.employee_id    AS suggested_pm_id,
@@ -1907,8 +2186,13 @@ export const getMisalignments = async (req: Request, res: Response) => {
         WHERE NOT EXISTS (SELECT 1 FROM strict_best)
         LIMIT 1
       ) sug ON true
+      )
+      SELECT * FROM with_suggested
     `, [pageSizeNum, offset]);
+    } // end fast-path else
 
+    // Both query paths embed COUNT(*) OVER() so total_count is always exact —
+    // for NO_SUGGESTED_PM it counts after the suggestion filter, matching the CSV.
     const totalCount = result.rows.length > 0 ? parseInt(result.rows[0].total_count) : 0;
 
     const unmappedResult = await pool.query(`
@@ -1944,7 +2228,8 @@ export const exportMisalignmentsCSV = async (req: Request, res: Response) => {
   // ─────────────────────────────────────────────────────────────────────────
   try {
     const { type } = req.query;
-    const typeWhere = type && type !== 'all'
+    const isNoSuggestedPM = type === 'NO_SUGGESTED_PM';
+    const typeWhere = type && type !== 'all' && !isNoSuggestedPM
       ? `AND mismatch_type = '${(type as string).replace(/'/g, "''")}'`
       : '';
 
@@ -2017,7 +2302,8 @@ export const exportMisalignmentsCSV = async (req: Request, res: Response) => {
         SELECT * FROM classified
         WHERE 1=1 ${typeWhere}
         ORDER BY employee_name
-      )
+      ),
+      base AS (
       SELECT
         f.*,
         sug.employee_id    AS suggested_pm_id,
@@ -2183,6 +2469,9 @@ export const exportMisalignmentsCSV = async (req: Request, res: Response) => {
         WHERE NOT EXISTS (SELECT 1 FROM strict_best)
         LIMIT 1
       ) sug ON true
+      )
+      SELECT * FROM base
+      ${isNoSuggestedPM ? 'WHERE suggested_pm_id IS NULL' : ''}
     `);
 
     const esc = (v: any): string =>

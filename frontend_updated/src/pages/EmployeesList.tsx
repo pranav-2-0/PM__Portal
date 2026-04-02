@@ -8,7 +8,7 @@ export default function EmployeesList() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   
-  const { data: response, isLoading, refetch } = useGetEmployeesListQuery({ 
+  const { data: response, isLoading, isFetching, refetch } = useGetEmployeesListQuery({ 
     ...filters, 
     page, 
     pageSize 
@@ -207,8 +207,13 @@ export default function EmployeesList() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-lg shadow-md overflow-hidden">
-        <div className="overflow-x-auto">
+      <div className="bg-white rounded-lg shadow-md overflow-hidden relative">
+        {isFetching && !isLoading && (
+          <div className="absolute top-0 left-0 right-0 h-0.5 z-10 overflow-hidden">
+            <div style={{ animation: 'shimmer 1.2s ease-in-out infinite', background: 'linear-gradient(90deg, transparent 0%, #0070AD 50%, transparent 100%)', backgroundSize: '200% 100%', height: '100%' }} />
+          </div>
+        )}
+        <div className={`overflow-x-auto transition-opacity duration-200 ${isFetching ? 'opacity-70' : 'opacity-100'}`}>
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
@@ -265,6 +270,7 @@ export default function EmployeesList() {
               : 'No employees match the selected filters. Try adjusting your filter criteria.'}
           </div>
         )}
+        </div>
         
         {/* Pagination */}
         {pagination.totalRecords > 0 && (

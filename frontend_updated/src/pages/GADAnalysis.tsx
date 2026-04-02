@@ -116,10 +116,10 @@ export default function GADAnalysis() {
       ? { practice: practiceParam, pmId: pmIdParam }
       : undefined
   );
-  const { data: correctData,   isLoading: correctLoading   } = useGetCorrectlyMappedEmployeesQuery({ page, pageSize: PAGE_SIZE, practice: practiceParam, pmId: pmIdParam }, { skip: activeTab !== 'correct' });
-  const { data: unmappedData,  isLoading: unmappedLoading  } = useGetUnmappedEmployeesQuery({ page, pageSize: PAGE_SIZE, practice: practiceParam }, { skip: activeTab !== 'unmapped' });
-  const { data: sameGradeData, isLoading: sameGradeLoading } = useGetSameGradeExceptionsQuery({ page, pageSize: PAGE_SIZE, practice: practiceParam, pmId: pmIdParam }, { skip: activeTab !== 'same_grade' });
-  const { data: proposedData,  isLoading: proposedLoading  } = useGetProposedPMsQuery({ page, pageSize: PAGE_SIZE, practice: practiceParam }, { skip: activeTab !== 'proposed' });
+  const { data: correctData,   isLoading: correctLoading,   isFetching: correctFetching   } = useGetCorrectlyMappedEmployeesQuery({ page, pageSize: PAGE_SIZE, practice: practiceParam, pmId: pmIdParam }, { skip: activeTab !== 'correct' });
+  const { data: unmappedData,  isLoading: unmappedLoading,  isFetching: unmappedFetching  } = useGetUnmappedEmployeesQuery({ page, pageSize: PAGE_SIZE, practice: practiceParam }, { skip: activeTab !== 'unmapped' });
+  const { data: sameGradeData, isLoading: sameGradeLoading, isFetching: sameGradeFetching } = useGetSameGradeExceptionsQuery({ page, pageSize: PAGE_SIZE, practice: practiceParam, pmId: pmIdParam }, { skip: activeTab !== 'same_grade' });
+  const { data: proposedData,  isLoading: proposedLoading,  isFetching: proposedFetching  } = useGetProposedPMsQuery({ page, pageSize: PAGE_SIZE, practice: practiceParam }, { skip: activeTab !== 'proposed' });
   const [applyPMs, { isLoading: applyingPMs }] = useConfirmAutoGeneratePMsMutation();
 
   const switchTab = (tab: TabType) => { setActiveTab(tab); setPage(1); };
@@ -313,6 +313,8 @@ export default function GADAnalysis() {
                   <tbody>
                     {correctLoading ? (
                       <tr><td colSpan={9} className="py-10 text-center text-gray-400">Loading…</td></tr>
+                    ) : correctFetching && !correctData?.data?.length ? (
+                      <tr><td colSpan={9} className="py-10 text-center text-gray-400">Loading…</td></tr>
                     ) : !correctData?.data?.length ? (
                       <tr><td colSpan={9} className="py-10 text-center text-gray-400">No correctly mapped employees found</td></tr>
                     ) : correctData.data.map((r: any) => (
@@ -366,6 +368,8 @@ export default function GADAnalysis() {
                   <tbody>
                     {unmappedLoading ? (
                       <tr><td colSpan={7} className="py-10 text-center text-gray-400">Loading…</td></tr>
+                    ) : unmappedFetching && !unmappedData?.data?.length ? (
+                      <tr><td colSpan={7} className="py-10 text-center text-gray-400">Loading…</td></tr>
                     ) : !unmappedData?.data?.length ? (
                       <tr><td colSpan={7} className="py-10 text-center text-gray-400">All employees are mapped 🎉</td></tr>
                     ) : unmappedData.data.map((r: any) => (
@@ -406,6 +410,8 @@ export default function GADAnalysis() {
                   </tr></thead>
                   <tbody>
                     {sameGradeLoading ? (
+                      <tr><td colSpan={8} className="py-10 text-center text-gray-400">Loading…</td></tr>
+                    ) : sameGradeFetching && !sameGradeData?.data?.length ? (
                       <tr><td colSpan={8} className="py-10 text-center text-gray-400">Loading…</td></tr>
                     ) : !sameGradeData?.data?.length ? (
                       <tr><td colSpan={8} className="py-10 text-center text-gray-400">No same-grade exceptions found 🎉</td></tr>
@@ -476,6 +482,8 @@ export default function GADAnalysis() {
                   </tr></thead>
                   <tbody>
                     {proposedLoading ? (
+                      <tr><td colSpan={9} className="py-10 text-center text-gray-400">Loading…</td></tr>
+                    ) : proposedFetching && !proposedData?.data?.length ? (
                       <tr><td colSpan={9} className="py-10 text-center text-gray-400">Loading…</td></tr>
                     ) : !proposedData?.data?.length ? (
                       <tr><td colSpan={9} className="py-10 text-center text-gray-400">No PM candidates at this time</td></tr>

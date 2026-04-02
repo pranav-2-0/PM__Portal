@@ -13,7 +13,10 @@ export const pmApi = createApi({
       return headers;
     },
   }),
-  tagTypes: ['NewJoiners', 'Assignments'],
+  // Cache results for 5 minutes after the component unmounts (e.g. switching tabs/pages).
+  // This means switching back to a recently visited filter costs zero network round-trips.
+  keepUnusedDataFor: 300,
+  tagTypes: ['NewJoiners', 'Assignments', 'Misalignments'],
   endpoints: (builder) => ({
     uploadEmployees: builder.mutation<UploadResponse, FormData>({
       query: (formData) => ({
@@ -273,6 +276,7 @@ export const pmApi = createApi({
       { page?: number; pageSize?: number; type?: string; practice?: string }
     >({
       query: (params = {}) => ({ url: '/employees/misalignments', params }),
+      providesTags: ['Misalignments'],
     }),
     // Manual PM Override
     overridePMAssignment: builder.mutation<any, { employeeId: string; newPmId: string; justification: string }>({
@@ -281,6 +285,7 @@ export const pmApi = createApi({
         method: 'POST',
         body,
       }),
+      invalidatesTags: ['Misalignments'],
     }),
     getEmployeePMHistory: builder.query<{ assignments: any[]; auditTrail: any[] }, string>({
       query: (employeeId) => `/employees/${employeeId}/pm-history`,
