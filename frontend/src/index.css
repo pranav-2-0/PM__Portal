@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+@layer base {
+  html, body {
+    font-family: 'Roboto', system-ui, sans-serif;
+  }
+
+  body {
+    background-color: #F8FAFC;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
