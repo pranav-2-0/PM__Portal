@@ -1,0 +1,26 @@
+Employee ID,Name,Email,Practice,CU,Region,Account,Skill,Grade,Current PM ID,Joining Date,Is New Joiner
+EMP001,Alice Johnson,alice.johnson@capgemini.com,Digital Engineering,CU-Technology,India,Client-TechCorp,Java,B2,PM001,2023-05-15,No
+EMP002,Bob Smith,bob.smith@capgemini.com,Digital Engineering,CU-Technology,India,Client-TechCorp,Python,B1,,2024-02-01,Yes
+EMP003,Carol White,carol.white@capgemini.com,Cloud & Infrastructure,CU-Cloud,India,Client-CloudNet,AWS,C1,PM003,2022-08-10,No
+EMP004,Daniel Lee,daniel.lee@capgemini.com,Data & AI,CU-Analytics,USA,Client-DataHub,Python,B2,PM004,2023-11-20,No
+EMP005,Emma Garcia,emma.garcia@capgemini.com,Digital Engineering,CU-Technology,UK,Client-GlobalTech,JavaScript,B1,PM005,2023-07-01,No
+EMP006,Frank Miller,frank.miller@capgemini.com,Cloud & Infrastructure,CU-Cloud,India,Client-CloudNet,Azure,B2,PM006,2024-01-15,No
+EMP007,Grace Davis,grace.davis@capgemini.com,Data & AI,CU-Analytics,USA,Client-DataHub,Machine Learning,C1,PM007,2022-04-12,No
+EMP008,Henry Wilson,henry.wilson@capgemini.com,Digital Engineering,CU-Technology,India,Client-TechCorp,React,B1,,2024-02-20,Yes
+EMP009,Iris Martinez,iris.martinez@capgemini.com,Cloud & Infrastructure,CU-Cloud,UK,Client-GlobalTech,DevOps,B2,PM009,2023-09-05,No
+EMP010,Jack Anderson,jack.anderson@capgemini.com,Data & AI,CU-Analytics,India,Client-DataHub,Python,B1,PM010,2023-12-01,No
+EMP011,Karen Thomas,karen.thomas@capgemini.com,Digital Engineering,CU-Technology,India,Client-TechCorp,Java,B2,PM001,2023-03-18,No
+EMP012,Leo Jackson,leo.jackson@capgemini.com,Digital Engineering,CU-Technology,India,Client-TechCorp,Python,B1,,2024-02-28,Yes
+EMP013,Maria Rodriguez,maria.rodriguez@capgemini.com,Cloud & Infrastructure,CU-Cloud,India,Client-CloudNet,AWS,C1,PM003,2022-11-22,No
+EMP014,Nathan Harris,nathan.harris@capgemini.com,Data & AI,CU-Analytics,USA,Client-DataHub,Data Science,B2,PM004,2023-06-14,No
+EMP015,Olivia Clark,olivia.clark@capgemini.com,Digital Engineering,CU-Technology,UK,Client-GlobalTech,JavaScript,B1,PM005,2023-10-08,No
+EMP016,Peter Lewis,peter.lewis@capgemini.com,Cloud & Infrastructure,CU-Cloud,India,Client-CloudNet,Azure,B2,PM006,2024-01-22,No
+EMP017,Quinn Walker,quinn.walker@capgemini.com,Data & AI,CU-Analytics,USA,Client-DataHub,Python,B1,PM007,2023-08-30,No
+EMP018,Rachel Hall,rachel.hall@capgemini.com,Digital Engineering,CU-Technology,India,Client-TechCorp,React,B2,PM008,2023-04-25,No
+EMP019,Samuel Allen,samuel.allen@capgemini.com,Cloud & Infrastructure,CU-Cloud,UK,Client-GlobalTech,DevOps,B1,PM009,2023-11-15,No
+EMP020,Tina Young,tina.young@capgemini.com,Data & AI,CU-Analytics,India,Client-DataHub,Machine Learning,C1,PM010,2022-07-19,No
+EMP021,Victor King,victor.king@capgemini.com,Digital Engineering,CU-Technology,India,Client-TechCorp,Java,B1,,2024-03-01,Yes
+EMP022,Wendy Wright,wendy.wright@capgemini.com,Cloud & Infrastructure,CU-Cloud,India,Client-CloudNet,AWS,B2,PM003,2023-05-20,No
+EMP023,Xavier Scott,xavier.scott@capgemini.com,Data & AI,CU-Analytics,USA,Client-DataHub,Python,B1,PM004,2023-09-12,No
+EMP024,Yara Green,yara.green@capgemini.com,Digital Engineering,CU-Technology,UK,Client-GlobalTech,React,B2,PM005,2023-02-28,No
+EMP025,Zachary Baker,zachary.baker@capgemini.com,Cloud & Infrastructure,CU-Cloud,India,Client-CloudNet,DevOps,B1,PM009,2024-01-10,No

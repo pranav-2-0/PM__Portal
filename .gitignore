@@ -1,0 +1,12 @@
+frontend_fixed/node_modules/
+frontend_fixed/dist/
+frontend_fixed/.vite/
+backend_fixed/node_modules/
+backend_fixed/dist/
+*.log
+.env
+.env.*
+.vscode/
+.cache/
+.DS_Store
+Thumbs.db

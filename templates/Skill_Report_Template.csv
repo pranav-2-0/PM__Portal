@@ -1,0 +1,31 @@
+Practice,Primary Skill,Skill Cluster
+DCX-BPM,Java,Java & JVM
+DCX-BPM,Spring Boot,Java & JVM
+DCX-BPM,Camunda BPM,BPM & Workflow
+DCX-BPM,Pega,BPM & Workflow
+DCX-BPM,ServiceNow,ITSM & Service Management
+DCX-BPM,SAP,ERP & SAP
+DCX-BPM,SAP S/4HANA,ERP & SAP
+Cloud & Infrastructure,AWS,Cloud Platforms
+Cloud & Infrastructure,Azure,Cloud Platforms
+Cloud & Infrastructure,GCP,Cloud Platforms
+Cloud & Infrastructure,Kubernetes,Container & Orchestration
+Cloud & Infrastructure,Docker,Container & Orchestration
+Cloud & Infrastructure,DevOps,DevOps & CI-CD
+Cloud & Infrastructure,Terraform,Infrastructure as Code
+Cloud & Infrastructure,Ansible,Infrastructure as Code
+Data & AI,Python,Data Engineering
+Data & AI,PySpark,Data Engineering
+Data & AI,SQL,Data Engineering
+Data & AI,Machine Learning,AI & ML
+Data & AI,TensorFlow,AI & ML
+Data & AI,Power BI,Analytics & Visualisation
+Data & AI,Tableau,Analytics & Visualisation
+Digital Engineering,React,Frontend Development
+Digital Engineering,Angular,Frontend Development
+Digital Engineering,JavaScript,Frontend Development
+Digital Engineering,TypeScript,Frontend Development
+Digital Engineering,Node.js,Backend Development
+Digital Engineering,Microservices,Backend Development
+Digital Engineering,Testing,QA & Testing
+Digital Engineering,Selenium,QA & Testing
