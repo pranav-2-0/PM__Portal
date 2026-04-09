@@ -14,6 +14,7 @@ import {
   getNewJoiners,
   getNewJoinersList,
   getAllEmployees,
+  exportAllEmployees,
   getAllPMs,
   getAllSeparations,
   getPMDetailReport,
@@ -124,6 +125,7 @@ router.post('/upload/bench', upload.single('file'), uploadBenchReport);
 router.get('/employees/new-joiners', getNewJoiners);
 router.get('/employees/new-joiners/list', getNewJoinersList);
 router.get('/employees/list', getAllEmployees);
+router.get('/employees/export', exportAllEmployees);
 router.patch('/employees/:employeeId/freeze', setEmployeeFreeze);
 router.get('/pms/list', getAllPMs);
 router.get('/pms/auto-generate/preview', previewAutoGeneratePMs);
