@@ -777,70 +777,223 @@ export const getNewJoinersList = async (req: Request, res: Response) => {
 };
 
 // Get all employees (Bench/GAD list)
+// ── Shared SQL builder for the enriched employee list ─────────────────────────
+function buildEmployeeListSQL(userPractice: string, filters: Record<string, any>): { baseQuery: string; params: any[]; paramIndex: number } {
+  const { status, practice, cu, region, grade, account, search } = filters;
+  const params: any[] = [];
+  let paramIndex = 1;
+
+  let whereClause = ` AND e.practice = $${paramIndex}`;
+  params.push(userPractice);
+  paramIndex++;
+
+  if (status) {
+    whereClause += ` AND e.status = $${paramIndex}`;
+    params.push(status);
+    paramIndex++;
+  }
+  if (practice) {
+    whereClause += ` AND e.practice ILIKE $${paramIndex}`;
+    params.push(`%${practice}%`);
+    paramIndex++;
+  }
+  if (cu) {
+    whereClause += ` AND e.cu ILIKE $${paramIndex}`;
+    params.push(`%${cu}%`);
+    paramIndex++;
+  }
+  if (region) {
+    whereClause += ` AND e.region ILIKE $${paramIndex}`;
+    params.push(`%${region}%`);
+    paramIndex++;
+  }
+  if (grade) {
+    whereClause += ` AND e.grade ILIKE $${paramIndex}`;
+    params.push(`%${grade}%`);
+    paramIndex++;
+  }
+  if (account) {
+    whereClause += ` AND e.account ILIKE $${paramIndex}`;
+    params.push(`%${account}%`);
+    paramIndex++;
+  }
+  if (search) {
+    whereClause += ` AND (e.name ILIKE $${paramIndex} OR e.employee_id ILIKE $${paramIndex})`;
+    params.push(`%${search}%`);
+    paramIndex++;
+  }
+
+  const baseQuery = `
+    FROM employees e
+    LEFT JOIN people_managers pm   ON e.current_pm_id = pm.employee_id
+    LEFT JOIN separation_reports sr ON e.employee_id  = sr.employee_id
+    WHERE 1=1
+    ${whereClause}
+  `;
+
+  return { baseQuery, params, paramIndex };
+}
+
+const EMPLOYEE_SELECT = `
+  SELECT
+    e.employee_id,
+    e.name,
+    e.email,
+    e.grade,
+    e.practice,
+    e.sub_practice,
+    e.cu,
+    e.region,
+    e.account,
+    e.location,
+    e.skill                            AS skill,
+    e.status,
+    e.joining_date,
+    e.hire_reason,
+    e.bench_status,
+    e.leave_type,
+    e.leave_start_date,
+    e.leave_end_date,
+    e.upload_source,
+    e.is_new_joiner,
+    e.current_pm_id,
+    pm.name                            AS pm_name,
+    pm.grade                           AS pm_grade,
+    pm.email                           AS pm_email,
+    pm.cu                              AS pm_cu,
+    pm.region                          AS pm_region,
+    sr.lwd                             AS separation_lwd,
+    sr.separation_type,
+    sr.designation,
+    sr.reason                          AS separation_reason,
+    sr.status                          AS separation_status
+`;
+
 export const getAllEmployees = async (req: Request, res: Response) => {
   try {
-    const { status, practice, cu, region, page = '1', pageSize = '50' } = req.query;
+    const { status, practice, cu, region, grade, account, search, page = '1', pageSize = '50' } = req.query;
     const pageNum = parseInt(page as string);
     const pageSizeNum = parseInt(pageSize as string);
     const offset = (pageNum - 1) * pageSizeNum;
-    
+
     const userPractice = ensureUserDepartment(req, res);
     if (!userPractice) return;
 
-    let query = 'SELECT e.*, pm.name as pm_name FROM employees e LEFT JOIN people_managers pm ON e.current_pm_id = pm.employee_id WHERE 1=1';
-    let countQuery = 'SELECT COUNT(*) FROM employees e WHERE 1=1';
-    const params: any[] = [];
-    let paramIndex = 1;
+    const { baseQuery, params, paramIndex } = buildEmployeeListSQL(userPractice, { status, practice, cu, region, grade, account, search });
 
-    query += ` AND e.practice = $${paramIndex}`;
-    countQuery += ` AND e.practice = $${paramIndex}`;
-    params.push(userPractice);
-    paramIndex++;
-
-    if (status) {
-      query += ` AND e.status = $${paramIndex}`;
-      countQuery += ` AND e.status = $${paramIndex}`;
-      params.push(status);
-      paramIndex++;
-    }
-    if (practice) {
-      query += ` AND e.practice = $${paramIndex}`;
-      countQuery += ` AND e.practice = $${paramIndex}`;
-      params.push(practice);
-      paramIndex++;
-    }
-    if (cu) {
-      query += ` AND e.cu = $${paramIndex}`;
-      countQuery += ` AND e.cu = $${paramIndex}`;
-      params.push(cu);
-      paramIndex++;
-    }
-    if (region) {
-      query += ` AND e.region = $${paramIndex}`;
-      countQuery += ` AND e.region = $${paramIndex}`;
-      params.push(region);
-      paramIndex++;
-    }
-
-    // Get total count for pagination
-    const countResult = await pool.query(countQuery, params);
+    const countResult = await pool.query(`SELECT COUNT(*) ${baseQuery}`, params);
     const totalRecords = parseInt(countResult.rows[0].count);
 
-    query += ` ORDER BY e.created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
-    params.push(pageSizeNum, offset);
+    const dataParams = [...params, pageSizeNum, offset];
+    const dataQuery = `${EMPLOYEE_SELECT} ${baseQuery} ORDER BY e.name ASC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
 
-    const result = await pool.query(query, params);
+    const result = await pool.query(dataQuery, dataParams);
     res.json({
       data: result.rows,
-      pagination: {
-        page: pageNum,
-        pageSize: pageSizeNum,
-        totalRecords,
-        totalPages: Math.ceil(totalRecords / pageSizeNum)
-      }
+      pagination: { page: pageNum, pageSize: pageSizeNum, totalRecords, totalPages: Math.ceil(totalRecords / pageSizeNum) }
     });
   } catch (error: any) {
     logger.error('Error fetching employees', error);
+    res.status(500).json({ error: error.message || 'Database error' });
+  }
+};
+
+// ── Export ALL employees as CSV (no pagination) ────────────────────────────────
+export const exportAllEmployees = async (req: Request, res: Response) => {
+  try {
+    const { status, practice, cu, region, grade, account, search, columns } = req.query;
+
+    const userPractice = ensureUserDepartment(req, res);
+    if (!userPractice) return;
+
+    const { baseQuery, params } = buildEmployeeListSQL(userPractice, { status, practice, cu, region, grade, account, search });
+
+    const dataQuery = `${EMPLOYEE_SELECT} ${baseQuery} ORDER BY e.name ASC`;
+    const result = await pool.query(dataQuery, params);
+    const rows = result.rows;
+
+    // Column definitions: key → CSV header label
+    const ALL_COLUMNS: Record<string, string> = {
+      employee_id:       'Employee ID',
+      name:              'Name',
+      email:             'Email',
+      grade:             'Grade',
+      practice:          'Practice',
+      sub_practice:      'Sub Practice',
+      cu:                'CU',
+      region:            'Region',
+      account:           'Account',
+      location:          'Location',
+      skill:             'Skill',
+      status:            'Status',
+      joining_date:      'Joining Date',
+      hire_reason:       'Hire Reason',
+      bench_status:      'Bench Status',
+      leave_type:        'Leave Type',
+      leave_start_date:  'Leave Start Date',
+      leave_end_date:    'Leave End Date',
+      upload_source:     'Upload Source',
+      is_new_joiner:     'New Joiner',
+      current_pm_id:     'PM ID',
+      pm_name:           'PM Name',
+      pm_grade:          'PM Grade',
+      pm_email:          'PM Email',
+      pm_cu:             'PM CU',
+      pm_region:         'PM Region',
+      separation_lwd:    'Last Working Date',
+      separation_type:   'Separation Type',
+      designation:       'Designation',
+      separation_reason: 'Separation Reason',
+      separation_status: 'Separation Status',
+    };
+
+    // Determine which columns to include (from query param or all)
+    let selectedKeys: string[];
+    if (columns && typeof columns === 'string' && columns.trim()) {
+      selectedKeys = columns.split(',').map(c => c.trim()).filter(c => ALL_COLUMNS[c]);
+    } else {
+      selectedKeys = Object.keys(ALL_COLUMNS);
+    }
+
+    const escape = (val: any): string => {
+      if (val === null || val === undefined) return '';
+      const s = String(val);
+      if (s.includes(',') || s.includes('"') || s.includes('\n')) return `"${s.replace(/"/g, '""')}"`;
+      return s;
+    };
+
+    // Format a date value safely — Postgres returns Date objects or ISO strings.
+    // We use local date parts to avoid UTC-midnight off-by-one errors.
+    const formatDate = (val: any): string => {
+      if (!val) return '';
+      const d = new Date(val);
+      if (isNaN(d.getTime())) return String(val).split('T')[0] || '';
+      // Use UTC parts since Postgres stores dates as UTC midnight
+      const yyyy = d.getUTCFullYear();
+      const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const dd = String(d.getUTCDate()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd}`;
+    };
+
+    const headerLine = selectedKeys.map(k => ALL_COLUMNS[k]).join(',');
+    const csvLines = rows.map(row =>
+      selectedKeys.map(k => {
+        const val = row[k];
+        if (k === 'joining_date' || k === 'leave_start_date' || k === 'leave_end_date' || k === 'separation_lwd') {
+          return escape(formatDate(val));
+        }
+        if (k === 'is_new_joiner') return val ? 'Yes' : 'No';
+        if (k === 'current_pm_id') return escape(val || '');
+        return escape(val);
+      }).join(',')
+    );
+
+    const csv = [headerLine, ...csvLines].join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="employees_export.csv"');
+    res.send(csv);
+  } catch (error: any) {
+    logger.error('Error exporting employees CSV', error);
     res.status(500).json({ error: error.message || 'Database error' });
   }
 };
@@ -2638,12 +2791,6 @@ export const overridePMAssignment = async (req: Request, res: Response) => {
     });
 
     logger.info('Manual PM override applied', { employeeId, oldPmId, newPmId, justification });
-
-    // Refresh materialized views so all filters (NO_PM_FOUND, misalignments)
-    // and CSV exports immediately reflect the newly assigned PM.
-    refreshAlignmentCache().catch((err: any) =>
-      logger.warn('Materialized view refresh failed after manual override (non-blocking)', err)
-    );
 
     res.json({
       message: `PM overridden: ${employee.name} → ${newPm.name}`,
