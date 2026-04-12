@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
+import React, { createContext, useContext, useState, useCallback } from "react";
 import { authService } from "../services/authService";
 
 interface AuthContextType {
@@ -8,7 +8,6 @@ interface AuthContextType {
   login: (user: any) => void;
   logout: () => void;
   setSelectedDepartment: (departmentId: number | null) => void;
-  isLoading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -18,42 +17,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<any | null>(
     JSON.parse(localStorage.getItem("user") || "null")
   );
-  const [isLoading, setIsLoading] = useState(!localStorage.getItem("authToken"));
-  const [selectedDepartment, setSelectedDepartment] = useState<number | null>(
-    user?.role === "Super Admin" ? JSON.parse(localStorage.getItem("selectedDepartment") || "null") : null
-  );
-
-  // Auto-login with demo account on first load if not authenticated
-  useEffect(() => {
-    if (!localStorage.getItem("authToken")) {
-      const demoLogin = async () => {
-        try {
-          const response = await fetch('/api/auth/demo-login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-          });
-          if (response.ok) {
-            const data = await response.json();
-            if (data.token && data.user) {
-              localStorage.setItem("authToken", data.token);
-              localStorage.setItem("user", JSON.stringify(data.user));
-              setIsAuthenticated(true);
-              setUser(data.user);
-            }
-          } else {
-            console.warn('Demo login failed with status:', response.status);
-          }
-        } catch (error) {
-          console.warn('Demo login failed:', error);
-        } finally {
-          setIsLoading(false);
-        }
-      };
-      demoLogin();
-    } else {
-      setIsLoading(false);
+  const [selectedDepartment, setSelectedDepartment] = useState<number | null>(() => {
+    if (user?.role === "Super Admin") {
+      const stored = localStorage.getItem("selectedDepartment");
+      if (stored && stored !== "null") {
+        return JSON.parse(stored);
+      }
+      // Default to first department (CCA-FS = 1) if no stored value
+      return 1;
     }
-  }, []);
+    return null;
+  });
 
   const login = useCallback((userData: any) => {
     setIsAuthenticated(true);
@@ -91,8 +65,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         selectedDepartment,
         login, 
         logout,
-        setSelectedDepartment: handleSetSelectedDepartment,
-        isLoading
+        setSelectedDepartment: handleSetSelectedDepartment
       }}
     >
       {children}

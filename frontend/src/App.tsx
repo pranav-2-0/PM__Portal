@@ -17,7 +17,7 @@ import { AuthProvider } from "./context/AuthContext";
 function App() {
   return (
     <AuthProvider>
-      <BrowserRouter future={{ v7_relativeSplatPath: true }}>
+      <BrowserRouter>
         <Routes>
 
           {/* Public */}
@@ -105,7 +105,7 @@ function App() {
           <Route
             path="/pm-management"
             element={
-              <ProtectedRoute requiredRoles={['Admin', 'Super Admin']}>
+              <ProtectedRoute requiredRoles={['Admin', 'Super Admin', 'Employee']}>
                 <Layout>
                   <PMManagement />
                 </Layout>

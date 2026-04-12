@@ -113,29 +113,3 @@ export const login = async (req: Request, res: Response) => {
     return res.status(400).json({ message: "Login failed" });
   }
 };
-
-// ✅ DEMO LOGIN (for development/demo purposes)
-export const demoLogin = async (req: Request, res: Response) => {
-  try {
-    // Find demo user or create one
-    const result = await pool.query(
-      `SELECT u.id, u.name, u.email, u.department_id, u.role, d.name AS department_name
-       FROM users u
-       LEFT JOIN departments d ON u.department_id = d.id
-       WHERE u.email = 'demo@test.com'
-       LIMIT 1`
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ message: "Demo user not found" });
-    }
-
-    const user = result.rows[0];
-    const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET || "SECRET");
-
-    return res.json({ user, token });
-  } catch (err: any) {
-    console.error("Demo login error:", err);
-    return res.status(500).json({ message: "Demo login failed", error: err.message });
-  }
-};

@@ -3,7 +3,7 @@
  * Use this in your Express middleware and route handlers
  */
 
-export type UserRole = 'Super Admin' | 'Admin' | 'Employee' | 'Staff';
+export type UserRole = 'Super Admin' | 'Admin' | 'People Manager' | 'Employee';
 
 export interface BackendPermissions {
   canUpload: boolean;
@@ -31,7 +31,7 @@ export const permissions: Record<UserRole, BackendPermissions> = {
     canManageUsers: false,
     canAccessSettings: true,
   },
-  Employee: {
+  'People Manager': {
     canUpload: false,
     canDownload: true,
     canView: true,
@@ -39,7 +39,7 @@ export const permissions: Record<UserRole, BackendPermissions> = {
     canManageUsers: false,
     canAccessSettings: false,
   },
-  Staff: {
+  Employee: {
     canUpload: false,
     canDownload: false,
     canView: true,

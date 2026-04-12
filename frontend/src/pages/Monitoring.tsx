@@ -245,7 +245,8 @@ export default function Monitoring() {
         justification: justification.trim(),
       }).unwrap();
       setOverrideStatus({ success: true, message: result.message });
-      refetchActive();
+      refetchMis();
+      refetchNoPm();
       setMisPage(1);
       setTimeout(() => {
         setOverrideModal(null);
@@ -266,7 +267,9 @@ export default function Monitoring() {
         justification: manualAssignJustification.trim(),
       }).unwrap();
       setManualAssignStatus({ success: true, message: result.message || 'PM assigned successfully' });
-      refetchActive();
+      // Refetch both queries so every tab and count reflects the new assignment
+      refetchMis();
+      refetchNoPm();
       setMisPage(1);
       setTimeout(() => {
         setManualAssignPopup(null);

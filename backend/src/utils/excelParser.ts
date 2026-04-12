@@ -160,7 +160,7 @@ export const parseEmployeeExcel = (buffer: Buffer): Employee[] => {
       // Always extract GGID/PERNR first so we can use it for fallback email/name
       const ggid = row['GGID'] || row['CGID'] || row['Global Id'] || row['Global ID'] || row['GlobalId'];
       const pernrVal = normalizeId(row['PERNR'] || row['LI/LR ID'] || row['LI LR ID'] || '');
-      const employeeIdRaw = normalizeId(ggid || row['Employee ID'] || row['employee_id'] || pernrVal || '');
+      const employeeIdRaw = normalizeId(row['Employee ID'] || row['employee_id'] || ggid || pernrVal || '');
 
       // Generate synthetic email from employee_id if none found in file
       if (!email && employeeIdRaw) {
@@ -201,9 +201,8 @@ export const parseEmployeeExcel = (buffer: Buffer): Employee[] => {
 
       // ── CU (Capability Unit / Business Unit) ──
       const cu = String(
-        row['NEW BU']           || row['New BU']          ||
         row['CU']               || row['cu']              ||
-        row['Organization BU']  ||
+        row['Organization BU']  || row['NEW BU']          ||
         row['SBU Name']         || row['Business Area']   ||
         row['Organization']     ||
         practice || ''
@@ -432,7 +431,6 @@ export const parsePMExcel = (buffer: Buffer): PeopleManager[] => {
         ]);
 
         const cuVal = getRowValue(row, [
-          'NEW BU', 'New BU',
           'CU', 'cu', 'SBU Name', 'Business Area', 'SBU',
           'Business Unit', 'BU', 'Delivery Unit',
         ]);
@@ -693,7 +691,6 @@ export const extractPMsFromGAD = (buffer: Buffer): import('../types').PeopleMana
       ).trim();
 
       const pmCu = String(
-        row['NEW BU'] || row['New BU'] ||
         row['CU'] || row['Organization BU'] || row['SBU Name'] || pmPractice || ''
       ).trim();
 
@@ -792,7 +789,6 @@ export const parseGADExcel = (buffer: Buffer): Employee[] => {
 
       // ── CU ──
       const cu = String(
-        row['NEW BU'] || row['New BU'] ||
         row['CU'] || row['Capability Unit'] || row['Organization BU'] ||
         row['SBU Name'] || row['Business Area'] || practice || ''
       ).trim();
@@ -1027,6 +1023,103 @@ export const parseSkillReportExcel = (buffer: Buffer): SkillRepositoryEntry[] =>
  * Returns the column headers detected in the first sheet of an Excel/CSV file.
  * Used to generate actionable error messages when an upload produces 0 valid rows.
  */
+/**
+ * Parse Leave Report Excel file
+ * Returns Employee data with leave information populated
+ * Practice data will be filled from GAD Report via GGID mapping in the controller
+ */
+export const parseLeaveReportExcel = (buffer: Buffer): Employee[] => {
+  try {
+    const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
+    
+    // Use first sheet or find a sheet with leave-related columns
+    let sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const { data, sheetName } = findEmployeeDataSheet(workbook);
+    
+    console.log(`📋 Leave Report sheets: ${workbook.SheetNames.join(' | ')}`);
+    console.log(`✅ Using sheet "${sheetName}" – ${data.length} rows`);
+    
+    if (!data || data.length === 0) {
+      throw new Error('Excel file is empty or has no recognisable employee data');
+    }
+    
+    const parsedData = data.map((row: any) => {
+      // Extract Employee ID / GGID
+      const employeeIdRaw = normalizeId(
+        row['GGID'] || row['CGID'] || row['Global Id'] || row['Global ID'] || 
+        row['GlobalId'] || row['Employee ID'] || row['employee_id'] || ''
+      );
+      
+      if (!employeeIdRaw) {
+        console.log('⚠️  Skipping Leave Report row – missing GGID/Employee ID. Keys:', Object.keys(row).slice(0, 10));
+        return null;
+      }
+      
+      // Extract Name
+      const name = String(
+        row['Employee Name'] || row['Full Name'] || row['Name'] || 
+        row['Emp Name'] || row['Employee'] || ''
+      ).trim() || `Employee-${employeeIdRaw}`;
+      
+      // Extract Email
+      let email = String(
+        row['Email ID'] || row['Email'] || row['Email Address'] || 
+        row['Work Email'] || row['Email-ID'] || ''
+      ).trim();
+      
+      if (!email && employeeIdRaw) {
+        email = `${employeeIdRaw.toLowerCase()}@capgemini.com`;
+      }
+      
+      // Extract Leave Information
+      const leaveType = String(row['Leave Type'] || row['Leave Status'] || '').trim() || undefined;
+      const leaveStatus = String(row['Leave Status'] || row['Status'] || '').trim() || undefined;
+      const leaveStartRaw = row['Leave Start Date'] || row['Leave From'] || row['Start Date'];
+      const leaveEndRaw = row['Leave End Date'] || row['Leave To'] || row['End Date'];
+      
+      const leaveStartDate = leaveStartRaw ? new Date(leaveStartRaw) : undefined;
+      const leaveEndDate = leaveEndRaw ? new Date(leaveEndRaw) : undefined;
+      
+      const comments = String(row['Comments'] || row['Remarks'] || row['Notes'] || '').trim() || undefined;
+      
+      const employeeObj: Employee = {
+        employee_id: employeeIdRaw,
+        name,
+        email,
+        // These will be populated from GAD Report via GGID mapping in controller
+        practice: '',  // Will be filled from GAD
+        cu: '',        // Will be filled from GAD
+        region: '',    // Will be filled from GAD
+        grade: '',     // Will be filled from GAD
+        is_new_joiner: false,
+        // Leave-specific fields
+        leave_type: leaveType,
+        leave_status: leaveStatus,
+        upload_source: 'leave' as const,
+      };
+      
+      if (leaveStartDate && !isNaN(leaveStartDate.getTime())) {
+        employeeObj.leave_start_date = leaveStartDate;
+      }
+      
+      if (leaveEndDate && !isNaN(leaveEndDate.getTime())) {
+        employeeObj.leave_end_date = leaveEndDate;
+      }
+      
+      if (comments) {
+        employeeObj._leave_comments = comments;
+      }
+      
+      return employeeObj;
+    }).filter((emp): emp is Employee => emp !== null);
+    
+    console.log(`✅ Leave Report parsed ${data.length} rows → ${parsedData.length} valid employees`);
+    return parsedData;
+  } catch (error: any) {
+    throw new Error(`Failed to parse Leave Report Excel: ${error.message}`);
+  }
+};
+
 export const getFileHeaders = (buffer: Buffer): string[] => {
   try {
     const workbook = XLSX.read(buffer, { type: 'buffer' });
