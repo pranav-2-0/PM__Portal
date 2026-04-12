@@ -3,7 +3,7 @@
  * Defines permissions for each role in the system
  */
 
-export type UserRole = 'Super Admin' | 'Admin' | 'People Manager' | 'Employee';
+export type UserRole = 'Super Admin' | 'Admin' | 'Employee' | 'Staff';
 
 export interface Permissions {
   canUpload: boolean;
@@ -31,7 +31,7 @@ export const permissions: Record<UserRole, Permissions> = {
     canManageUsers: false,
     canAccessSettings: true,
   },
-  'People Manager': {
+  Employee: {
     canUpload: false,
     canDownload: true,
     canView: true,
@@ -39,7 +39,7 @@ export const permissions: Record<UserRole, Permissions> = {
     canManageUsers: false,
     canAccessSettings: false,
   },
-  Employee: {
+  Staff: {
     canUpload: false,
     canDownload: false,
     canView: true,

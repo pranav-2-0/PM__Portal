@@ -10,3 +10,5 @@ backend/dist/
 .cache/
 .DS_Store
 Thumbs.db
+*.zip
+backend/test-direct.js

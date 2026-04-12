@@ -14,6 +14,7 @@ import {
   getNewJoiners,
   getNewJoinersList,
   getAllEmployees,
+  exportAllEmployees,
   getAllPMs,
   getAllSeparations,
   getPMDetailReport,
@@ -65,17 +66,20 @@ import {
   // Misalignment Detection
   getMisalignments,
   exportMisalignmentsCSV,
-  getNoSuggestedPMEmployees,
-  exportNoSuggestedPMCSV,
   getUnmappedEmployees,
+  // Skill Management
+  getEmployeeSkillDistribution,
+  bulkUpdateEmployeeSkills,
+  removeEmployeeSkill,
+  updateSingleEmployeeSkill,
+  getSkillManagementCoverage,
+  getFilteredEmployeesForSkillUpdate,
   // Manual Override
   overridePMAssignment,
   getEmployeePMHistory,
-  getSuggestedPMsForEmployee,
   // GAD / Bench uploads
   uploadGAD,
   uploadBenchReport,
-  uploadLeaveReport,
   // Gradewise PM Capacity
   getGradewisePMCapacity,
   // GAD Analysis Report
@@ -105,7 +109,7 @@ const upload = multer({
 // Health check
 router.get('/health/db', checkDatabaseHealth);
 
-// Require authentication for all PM routes after health
+// ✅ Apply auth middleware to all routes below
 router.use(authMiddleware);
 
 // Data upload routes
@@ -114,14 +118,14 @@ router.post('/upload/new-joiners', upload.single('file'), uploadNewJoiners);
 router.post('/upload/pms', upload.single('file'), uploadPMs);
 router.post('/upload/separations', upload.single('file'), uploadSeparations);
 router.post('/upload/skills', upload.single('file'), uploadSkillReport);
-router.post('/upload/gad', requireAdmin, upload.single('file'), uploadGAD);
-router.post('/upload/bench', requireAdmin, upload.single('file'), uploadBenchReport);
-router.post('/upload/leave', requireAdmin, upload.single('file'), uploadLeaveReport);
+router.post('/upload/gad', upload.single('file'), uploadGAD);
+router.post('/upload/bench', upload.single('file'), uploadBenchReport);
 
 // PM matching routes
 router.get('/employees/new-joiners', getNewJoiners);
 router.get('/employees/new-joiners/list', getNewJoinersList);
 router.get('/employees/list', getAllEmployees);
+router.get('/employees/export', exportAllEmployees);
 router.patch('/employees/:employeeId/freeze', setEmployeeFreeze);
 router.get('/pms/list', getAllPMs);
 router.get('/pms/auto-generate/preview', previewAutoGeneratePMs);
@@ -203,9 +207,9 @@ router.post('/assignments/:assignmentId/reject', async (req, res) => {
   }
 });
 // Phase 3: Workflow Automation Routes
-router.post('/workflows/new-joiner', requireAdmin, triggerNewJoinerWorkflow);
-router.post('/workflows/reassignment', requireAdmin, triggerReassignmentWorkflow);
-router.post('/workflows/monthly-engagement', requireAdmin, triggerMonthlyEngagement);
+router.post('/workflows/new-joiner', triggerNewJoinerWorkflow);
+router.post('/workflows/reassignment', triggerReassignmentWorkflow);
+router.post('/workflows/monthly-engagement', triggerMonthlyEngagement);
 
 // Phase 2: Approval workflow
 router.post('/approvals/:workflowId/approve', approveAssignment);
@@ -224,14 +228,12 @@ router.get('/reports/practice', generatePracticeReport);
 router.get('/reports/filters', getPracticeFilters);
 
 // Configuration: Matching Weights
-router.get('/config/matching-weights', requireAdmin, getMatchingWeights);
-router.put('/config/matching-weights', requireAdmin, updateMatchingWeights);
+router.get('/config/matching-weights', getMatchingWeights);
+router.put('/config/matching-weights', updateMatchingWeights);
 
 // Misalignment Detection
 router.get('/employees/misalignments', getMisalignments);
 router.get('/employees/misalignments/export', exportMisalignmentsCSV);
-router.get('/employees/no-suggested-pm', getNoSuggestedPMEmployees);
-router.get('/employees/no-suggested-pm/export', exportNoSuggestedPMCSV);
 router.get('/employees/unmapped', getUnmappedEmployees);
 
 // Gradewise PM Capacity
@@ -249,9 +251,16 @@ router.post('/reports/discrepancy/generate', triggerDiscrepancyReport);
 router.get('/reports/discrepancy/details', getDiscrepancyDetails);
 router.get('/reports/discrepancy/history', getDiscrepancyHistory);
 
+// Skill Management
+router.get('/employees/skills/distribution', getEmployeeSkillDistribution);
+router.get('/employees/skills/coverage', getSkillManagementCoverage);
+router.get('/employees/skills/preview', getFilteredEmployeesForSkillUpdate);
+router.put('/employees/skills/bulk-update', bulkUpdateEmployeeSkills);
+router.post('/employees/skills/remove', removeEmployeeSkill);
+router.patch('/employees/:employeeId/skill', updateSingleEmployeeSkill);
+
 // Manual PM Override
 router.post('/employees/:employeeId/override-pm', overridePMAssignment);
 router.get('/employees/:employeeId/pm-history', getEmployeePMHistory);
-router.get('/employees/:employeeId/suggested-pms', getSuggestedPMsForEmployee);
 
 export default router;

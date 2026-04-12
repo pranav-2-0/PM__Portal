@@ -323,11 +323,26 @@ export class BulkUploadService {
     try {
       await client.query('BEGIN');
 
+      // Deduplicate within this batch — keep the last row for each employee_id.
+      // PostgreSQL ON CONFLICT cannot update the same key twice in one statement.
+      const dedupMap = new Map<string, Employee>();
+      for (const emp of employees) {
+        const empId = (emp.employee_id || '').trim();
+        if (!empId) continue;
+        dedupMap.set(empId, { ...emp, employee_id: empId });
+      }
+      const unique = Array.from(dedupMap.values());
+
+      if (unique.length === 0) {
+        await client.query('COMMIT');
+        return 0;
+      }
+
       const values: any[] = [];
       const placeholders: string[] = [];
       let paramIndex = 1;
 
-      for (const emp of employees) {
+      for (const emp of unique) {
         placeholders.push(
           `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, ` +
           `$${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6}, $${paramIndex + 7}, ` +
@@ -382,7 +397,7 @@ export class BulkUploadService {
       // Bench files use "People Manager Email Address" (not PM GGID).
       // For employees where current_pm_id is null but _pm_email is set,
       // look up the PM's employee_id by their email address.
-      const needsEmailResolution = employees.filter(e => !e.current_pm_id && e._pm_email);
+      const needsEmailResolution = unique.filter(e => !e.current_pm_id && e._pm_email);
       if (needsEmailResolution.length > 0) {
         const empIds   = needsEmailResolution.map(e => e.employee_id);
         const pmEmails = needsEmailResolution.map(e => e._pm_email as string);
@@ -400,7 +415,7 @@ export class BulkUploadService {
 
       await client.query('COMMIT');
       
-      return employees.length;
+      return unique.length;
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;

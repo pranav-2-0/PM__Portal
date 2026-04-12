@@ -5,6 +5,7 @@ export class StatisticsService {
   async getDashboardStats(practice?: string) {
     const client = await pool.connect();
     try {
+      console.log('getDashboardStats with practice:', practice);
       const employeeQuery = practice
         ? 'SELECT COUNT(*) as count FROM employees WHERE status = $1 AND practice = $2'
         : 'SELECT COUNT(*) as count FROM employees WHERE status = $1';

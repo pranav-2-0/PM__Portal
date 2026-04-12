@@ -125,22 +125,14 @@ export default function Header() {
           <div className="relative">
             <button
               onClick={() => setShowUserMenu(!showUserMenu)}
-              className="flex items-center gap-3 p-2 hover:bg-white/10 rounded-lg"
+              className="flex items-center gap-2 p-2 hover:bg-white/10 rounded-lg"
             >
-              {/* Practice name on far left */}
-              {practiceLabel && (
-                <div className="flex flex-col items-start text-left min-w-fit">
-                  <span className="text-[11px] text-white/80 leading-tight font-medium">{practiceLabel}</span>
-                </div>
-              )}
-              {/* Avatar icon */}
-              <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center flex-shrink-0">
+              <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
                 <User size={18} />
               </div>
-              {/* User name and role */}
               <div className="flex flex-col items-start text-left">
                 <span className="text-sm font-medium">{user?.name || "User"}</span>
-                {user?.role && <span className="text-[11px] text-white/80 leading-tight">{user.role}</span>}
+                {practiceLabel && <span className="text-[11px] text-white/80 leading-tight">{practiceLabel}</span>}
               </div>
             </button>
 

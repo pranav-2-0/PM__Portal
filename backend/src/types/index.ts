@@ -24,10 +24,8 @@ export interface Employee {
   bench_status?: string;
   upload_source?: string;   // 'gad' | 'bench'
   leave_type?: string;
-  leave_status?: string;
   leave_start_date?: Date;
   leave_end_date?: Date;
-  _leave_comments?: string;  // Transient field from Leave Report, not stored in DB
 }
 
 export interface PeopleManager {
