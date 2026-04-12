@@ -1,24 +1,57 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
-import { useGetUploadStatsQuery, useLazyPreviewAutoGeneratePMsQuery, useConfirmAutoGeneratePMsMutation, useLazyPreviewAutoAssignQuery, useConfirmAutoAssignMutation,
-  useUploadEmployeesMutation, useUploadPMsMutation, useUploadNewJoinersMutation, useUploadSeparationsMutation, useUploadSkillReportMutation, useUploadGADMutation, useUploadBenchReportMutation } from '../services/pmApi';
+import { useGetUploadStatsQuery, useLazyPreviewAutoAssignQuery, useConfirmAutoAssignMutation,
+  useUploadEmployeesMutation, useUploadPMsMutation, useUploadNewJoinersMutation, useUploadSeparationsMutation, useUploadSkillReportMutation, useUploadGADMutation, useUploadLeaveReportMutation } from '../services/pmApi';
 import { SORTED_PRACTICES } from '../constants/practices';
-import { CloudUpload, Loader2, X, Users, UserCog, UserX, ExternalLink, BarChart3, FileSpreadsheet, Clock, BookOpen, Sparkles, Eye, CheckCircle2, ArrowRight, ChevronRight, AlertTriangle } from 'lucide-react';
+import { isSuperAdmin, isAdmin } from '../utils/rbac';
+import { CloudUpload, Loader2, X, Users, UserCog, UserX, ExternalLink, BarChart3, FileSpreadsheet, Clock, BookOpen, Eye, CheckCircle2, ArrowRight, ChevronRight, AlertTriangle } from 'lucide-react';
+
+// Map practice names to department IDs
+const PRACTICE_TO_DEPARTMENT_ID: Record<string, number> = {
+  'CCA-FS': 1,
+  'Cloud & Infrastructure': 2,
+  'Data & AI': 3,
+  'DCX-DE': 4,
+  'DCX-FS': 5,
+  'Digital Engineering': 6,
+  'Enterprise Architecture': 7,
+  'Insights & Data': 8,
+  'SAP': 9,
+};
 
 export const DataUpload: React.FC = () => {
-  const { data: uploadStats, refetch: refetchStats } = useGetUploadStatsQuery();
+  const { user, selectedDepartment } = useAuth();
+  const isSuperAdminUser = isSuperAdmin(user?.role);
+  const isAdminUser = isAdmin(user?.role);
+  
+  // Pass department_id for Super Admin users
+  const uploadStatsParams = isSuperAdminUser && selectedDepartment ? { department_id: selectedDepartment } : undefined;
+  const { data: uploadStats, refetch: refetchStats } = useGetUploadStatsQuery(uploadStatsParams);
   const [uploadEmployees] = useUploadEmployeesMutation();
   const [uploadPMs] = useUploadPMsMutation();
   const [uploadNewJoiners] = useUploadNewJoinersMutation();
   const [uploadSeparations] = useUploadSeparationsMutation();
   const [uploadSkillReport] = useUploadSkillReportMutation();
   const [uploadGAD] = useUploadGADMutation();
-  const [uploadBenchReport] = useUploadBenchReportMutation();
-  const { user } = useAuth();
-  const departmentPractice = (user?.department_name || user?.department || '').trim();
+  const [uploadLeaveReport] = useUploadLeaveReportMutation();
+
+  // Get the effective practice for uploads (Super Admin uses selected department, others use their assigned department)
+  const departmentPractice = React.useMemo(() => {
+    if (isSuperAdmin(user?.role) && selectedDepartment) {
+      // For Super Admin, find the practice name from the selected department ID
+      for (const [practice, id] of Object.entries(PRACTICE_TO_DEPARTMENT_ID)) {
+        if (id === selectedDepartment) {
+          return practice;
+        }
+      }
+      return SORTED_PRACTICES[0]; // fallback
+    }
+    // For regular users, use their assigned department
+    return (user?.department_name || user?.department || '').trim();
+  }, [user?.role, user?.department_name, user?.department, selectedDepartment]);
 
   // Block unauthorized roles explicitly in component
-  if (user?.role === 'Employee' || user?.role === 'Staff') {
+  if (user?.role === 'Employee') {
     return (
       <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center px-6 py-12">
         <div className="bg-white p-8 rounded-xl shadow-md text-center max-w-lg">
@@ -31,8 +64,7 @@ export const DataUpload: React.FC = () => {
 
   // Tracks which upload type is in-flight (replaces per-mutation isLoading flags)
   const [uploadingType, setUploadingType] = React.useState<string | null>(null);
-  const [triggerPreview, { data: previewData, isLoading: previewLoading, isFetching: previewFetching }] = useLazyPreviewAutoGeneratePMsQuery();
-  const [confirmGenerate, { isLoading: generateLoading }] = useConfirmAutoGeneratePMsMutation();
+
   const [triggerAssignPreview, { data: assignPreviewData, isLoading: assignPreviewLoading, isFetching: assignPreviewFetching }] = useLazyPreviewAutoAssignQuery();
   const [confirmAssign, { isLoading: assignLoading }] = useConfirmAutoAssignMutation();
   const [message, setMessage] = React.useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -44,7 +76,7 @@ export const DataUpload: React.FC = () => {
   const practiceList = SORTED_PRACTICES;
   const [practiceSelections, setPracticeSelections] = React.useState<Record<string, string>>({
     gad: departmentPractice,
-    bench: departmentPractice,
+    leave: departmentPractice,
   });
   
   // State for file selection
@@ -55,7 +87,7 @@ export const DataUpload: React.FC = () => {
     separations?: File;
     skills?: File;
     gad?: File;
-    bench?: File;
+    leave?: File;
   }>({});
 
   React.useEffect(() => {
@@ -63,12 +95,12 @@ export const DataUpload: React.FC = () => {
       setPracticeSelections(prev => ({
         ...prev,
         gad: departmentPractice,
-        bench: departmentPractice,
+        leave: departmentPractice,
       }));
     }
   }, [departmentPractice]);
 
-  const handleFileSelect = (file: File, type: 'employees' | 'pms' | 'newJoiners' | 'separations' | 'skills' | 'gad' | 'bench') => {
+  const handleFileSelect = (file: File, type: 'employees' | 'pms' | 'newJoiners' | 'separations' | 'skills' | 'gad' | 'leave') => {
     // Check file size (100MB = 104857600 bytes)
     const maxSize = 100 * 1024 * 1024;
     if (file.size > maxSize) {
@@ -83,32 +115,32 @@ export const DataUpload: React.FC = () => {
     setMessage(null); // Clear previous messages
   };
 
-  const handleUpload = async (type: 'employees' | 'pms' | 'newJoiners' | 'separations' | 'skills' | 'gad' | 'bench') => {
-    const file = selectedFiles[type];
-    if (!file) return;
-
-    const mutationMap = {
-      employees: uploadEmployees,
-      pms: uploadPMs,
-      newJoiners: uploadNewJoiners,
-      separations: uploadSeparations,
-      skills: uploadSkillReport,
-      gad: uploadGAD,
-      bench: uploadBenchReport,
-    } as const;
-
-    const uploadMutation = mutationMap[type];
-    if (!uploadMutation) {
-      setMessage({ type: 'error', text: 'Upload type not supported.' });
-      return;
-    }
-
-    console.log('Uploading:', file.name, 'type:', type, 'size:', file.size);
-
-    setUploadingType(type);
-    const formData = new FormData();
-    formData.append('file', file);
-    const practice = (type === 'gad' || type === 'bench')
+const handleUpload = async (type: 'employees' | 'pms' | 'newJoiners' | 'separations' | 'skills' | 'gad' | 'leave') => {
+      const file = selectedFiles[type];
+      if (!file) return;
+  
+      const mutationMap = {
+        employees: uploadEmployees,
+        pms: uploadPMs,
+        newJoiners: uploadNewJoiners,
+        separations: uploadSeparations,
+        skills: uploadSkillReport,
+        gad: uploadGAD,
+        leave: uploadLeaveReport,
+      } as const;
+  
+      const uploadMutation = mutationMap[type];
+      if (!uploadMutation) {
+        setMessage({ type: 'error', text: 'Upload type not supported.' });
+        return;
+      }
+  
+      console.log('Uploading:', file.name, 'type:', type, 'size:', file.size);
+  
+      setUploadingType(type);
+      const formData = new FormData();
+      formData.append('file', file);
+      const practice = (type === 'gad' || type === 'leave')
       ? (departmentPractice || (practiceSelections as Record<string, string>)[type] || '')
       : (practiceSelections as Record<string, string>)[type] || '';
     if (practice) formData.append('practice', practice);
@@ -130,17 +162,6 @@ export const DataUpload: React.FC = () => {
       setMessage({ type: 'error', text: errorMessage });
     } finally {
       setUploadingType(null);
-    }
-  };
-
-  const handleAutoGenerate = async () => {
-    try {
-      const result = await confirmGenerate().unwrap();
-      setMessage({ type: 'success', text: result.message });
-      refetchStats();
-    } catch (error: any) {
-      const errorMessage = error.data?.error || error.message || 'Auto-generation failed.';
-      setMessage({ type: 'error', text: errorMessage });
     }
   };
 
@@ -533,15 +554,15 @@ export const DataUpload: React.FC = () => {
           onPracticeChange={(v: string) => setPracticeSelections(prev => ({ ...prev, gad: v }))}
         />
         <UploadCard 
-          title="Bench Report"
-          description="Bench/GTD data — captures Leave Type, Leave Dates, Bench Status for active resources"
-          type="bench"
-          loading={uploadingType === 'bench'}
+          title="Leave Report"
+          description="Employee leave information mapped to GAD Practice via GGID"
+          type="leave"
+          loading={uploadingType === 'leave'}
           requiresPractice={true}
           lockedPractice={departmentPractice}
           practiceList={practiceList}
-          selectedPractice={practiceSelections.bench}
-          onPracticeChange={(v: string) => setPracticeSelections(prev => ({ ...prev, bench: v }))}
+          selectedPractice={practiceSelections.leave}
+          onPracticeChange={(v: string) => setPracticeSelections(prev => ({ ...prev, leave: v }))}
         />
         <UploadCard 
           title="Skill Report" 
@@ -557,219 +578,121 @@ export const DataUpload: React.FC = () => {
         />
       </div>
 
-      {/* ── Auto-Generate PM List ── */}
-      <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg p-6 mb-8 border border-purple-200">
-        <div className="flex items-start gap-3 mb-4">
-          <Sparkles className="w-6 h-6 text-purple-600 mt-0.5 flex-shrink-0" />
-          <div className="flex-1">
-            <h3 className="font-semibold text-gray-800 text-lg mb-1">Auto-Generate PM List from Employee Data</h3>
-            <p className="text-sm text-gray-600 mb-2">
-              No PM feed file? Automatically promote eligible employees from your uploaded Bench Report as People Managers.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs bg-purple-100 text-purple-700 font-medium">
-                <CheckCircle2 className="w-3 h-3" /> Grade ≥ C1
-              </span>
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs bg-indigo-100 text-indigo-700 font-medium">
-                <CheckCircle2 className="w-3 h-3" /> Tenure ≥ 1 year
-              </span>
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs bg-green-100 text-green-700 font-medium">
-                <CheckCircle2 className="w-3 h-3" /> Safe re-run (upsert)
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Preview results */}
-        {previewData && (
-          <div className="mb-5 p-4 bg-white rounded-lg border border-purple-200">
-            <div className="grid grid-cols-3 divide-x divide-gray-100 mb-4">
-              <div className="text-center pr-4">
-                <p className="text-2xl font-bold text-purple-700">{previewData.eligible}</p>
-                <p className="text-xs text-gray-500 mt-0.5">Total Eligible</p>
-              </div>
-              <div className="text-center px-4">
-                <p className="text-2xl font-bold text-green-600">{previewData.new}</p>
-                <p className="text-xs text-gray-500 mt-0.5">New PMs to Create</p>
-              </div>
-              <div className="text-center pl-4">
-                <p className="text-2xl font-bold text-gray-400">{previewData.alreadyPM}</p>
-                <p className="text-xs text-gray-500 mt-0.5">Already PMs</p>
-              </div>
-            </div>
-
-            {previewData.eligible === 0 ? (
-              <p className="text-sm text-gray-500 text-center py-2">
-                No eligible employees found. Upload the Bench Report first, then try again.
-              </p>
-            ) : (
-              <div className="space-y-1">
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Preview (first {Math.min(previewData.preview.length, 8)})</p>
-                {previewData.preview.slice(0, 8).map((emp: any) => (
-                  <div key={emp.employee_id} className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-purple-50">
-                    <span className="text-sm text-gray-800 font-medium">{emp.name || `ID: ${emp.employee_id}`}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded font-medium">{emp.grade}</span>
-                      <span className="text-xs text-gray-500">{emp.tenure_years}y tenure</span>
-                      {emp.practice && <span className="text-xs text-gray-400 hidden sm:inline">{emp.practice}</span>}
-                      {emp.already_pm && (
-                        <span className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-400 rounded">Already PM</span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                {previewData.eligible > 8 && (
-                  <p className="text-xs text-gray-400 text-center pt-1">+{previewData.eligible - 8} more eligible employees</p>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        <div className="flex flex-wrap gap-3">
-          <button
-            onClick={() => triggerPreview()}
-            disabled={previewLoading || previewFetching}
-            className="flex items-center gap-2 px-4 py-2.5 bg-white text-purple-700 border border-purple-300 rounded-lg hover:bg-purple-50 transition-colors text-sm font-medium disabled:opacity-50 shadow-sm"
-          >
-            {(previewLoading || previewFetching) ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Eye className="w-4 h-4" />
-            )}
-            {(previewLoading || previewFetching) ? 'Scanning employees...' : 'Preview Eligible Employees'}
-          </button>
-
-          {previewData && previewData.eligible > 0 && (
-            <button
-              onClick={handleAutoGenerate}
-              disabled={generateLoading}
-              className="flex items-center gap-2 px-5 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-semibold disabled:opacity-50 shadow-md"
-            >
-              {generateLoading ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Sparkles className="w-4 h-4" />
-              )}
-              {generateLoading ? 'Generating...' : `Generate ${previewData.new > 0 ? previewData.new + ' New' : ''} PMs`}
-            </button>
-          )}
-        </div>
-      </div>
-
       {/* ── STEP 3 — Auto-Assign Employees to PMs ── */}
-      <div className="bg-gradient-to-r from-teal-50 to-cyan-50 rounded-lg p-6 mb-8 border border-teal-200">
-        <div className="flex items-start gap-3 mb-4">
-          <div className="w-8 h-8 rounded-full bg-teal-500 text-white flex items-center justify-center text-sm font-bold flex-shrink-0">3</div>
-          <div className="flex-1">
-            <h3 className="font-semibold text-gray-800 text-lg mb-1">Auto-Assign Employees to People Managers</h3>
-            <p className="text-sm text-gray-600 mb-2">
-              Runs the matching engine across all unassigned employees and assigns each one to the best matching PM.
-              Requires Steps 1 &amp; 2 to be completed first.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs bg-teal-100 text-teal-700 font-medium">
-                <CheckCircle2 className="w-3 h-3" /> Same Practice (40pts)
-              </span>
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs bg-cyan-100 text-cyan-700 font-medium">
-                <CheckCircle2 className="w-3 h-3" /> Same CU (25pts)
-              </span>
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs bg-blue-100 text-blue-700 font-medium">
-                <CheckCircle2 className="w-3 h-3" /> Same Region (15pts)
-              </span>
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs bg-green-100 text-green-700 font-medium">
-                <CheckCircle2 className="w-3 h-3" /> Safe re-run (upsert)
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Preview results */}
-        {assignPreviewData && (
-          <div className="mb-5 p-4 bg-white rounded-lg border border-teal-200">
-            <div className="grid grid-cols-3 divide-x divide-gray-100 mb-4">
-              <div className="text-center pr-4">
-                <p className="text-2xl font-bold text-gray-700">{assignPreviewData.totalUnassigned}</p>
-                <p className="text-xs text-gray-500 mt-0.5">Unassigned Employees</p>
-              </div>
-              <div className="text-center px-4">
-                <p className="text-2xl font-bold text-teal-600">{assignPreviewData.canBeAssigned}</p>
-                <p className="text-xs text-gray-500 mt-0.5">Will Be Assigned</p>
-              </div>
-              <div className="text-center pl-4">
-                <p className="text-2xl font-bold text-orange-500">{assignPreviewData.cannotBeAssigned}</p>
-                <p className="text-xs text-gray-500 mt-0.5">No Match Found</p>
-              </div>
-            </div>
-
-            {assignPreviewData.totalUnassigned === 0 ? (
-              <p className="text-sm text-green-700 font-medium text-center py-2">✓ All employees already assigned to a PM!</p>
-            ) : assignPreviewData.canBeAssigned === 0 ? (
-              <p className="text-sm text-orange-600 text-center py-2">
-                No matches found. Complete Steps 1 &amp; 2 first.
+      {!isAdminUser && (
+        <div className="bg-gradient-to-r from-teal-50 to-cyan-50 rounded-lg p-6 mb-8 border border-teal-200">
+          <div className="flex items-start gap-3 mb-4">
+            <div className="w-8 h-8 rounded-full bg-teal-500 text-white flex items-center justify-center text-sm font-bold flex-shrink-0">3</div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-gray-800 text-lg mb-1">Auto-Assign Employees to People Managers</h3>
+              <p className="text-sm text-gray-600 mb-2">
+                Runs the matching engine across all unassigned employees and assigns each one to the best matching PM.
+                Requires Steps 1 &amp; 2 to be completed first.
               </p>
-            ) : (
-              <div className="space-y-1">
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Sample assignments (first {Math.min(assignPreviewData.preview.length, 8)})</p>
-                {assignPreviewData.preview.slice(0, 8).map((row: any, i: number) => (
-                  <div key={i} className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-teal-50">
-                    <span className="text-sm text-gray-800 font-medium truncate max-w-[160px]" title={row.emp_name}>{row.emp_name}</span>
-                    <span className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded">{row.emp_grade}</span>
-                    <ArrowRight className="w-3 h-3 text-teal-400 flex-shrink-0" />
-                    <span className="text-sm text-teal-700 font-medium truncate max-w-[160px]" title={row.pm_name}>{row.pm_name}</span>
-                    <span className="text-xs px-1.5 py-0.5 bg-teal-100 text-teal-600 rounded">{row.pm_grade}</span>
-                    <span className="ml-auto text-xs text-gray-400">{row.score}pts</span>
-                  </div>
-                ))}
-                {assignPreviewData.canBeAssigned > 8 && (
-                  <p className="text-xs text-gray-400 text-center pt-1">+{assignPreviewData.canBeAssigned - 8} more assignments queued</p>
-                )}
+              <div className="flex flex-wrap gap-2">
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs bg-teal-100 text-teal-700 font-medium">
+                  <CheckCircle2 className="w-3 h-3" /> Same Practice (40pts)
+                </span>
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs bg-cyan-100 text-cyan-700 font-medium">
+                  <CheckCircle2 className="w-3 h-3" /> Same CU (25pts)
+                </span>
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs bg-blue-100 text-blue-700 font-medium">
+                  <CheckCircle2 className="w-3 h-3" /> Same Region (15pts)
+                </span>
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs bg-green-100 text-green-700 font-medium">
+                  <CheckCircle2 className="w-3 h-3" /> Safe re-run (upsert)
+                </span>
               </div>
-            )}
+            </div>
           </div>
-        )}
 
-        <div className="flex flex-wrap gap-3">
-          <button
-            onClick={() => triggerAssignPreview()}
-            disabled={assignPreviewLoading || assignPreviewFetching || (uploadStats?.activePMs ?? 0) === 0}
-            className="flex items-center gap-2 px-4 py-2.5 bg-white text-teal-700 border border-teal-300 rounded-lg hover:bg-teal-50 transition-colors text-sm font-medium disabled:opacity-50 shadow-sm"
-            title={(uploadStats?.activePMs ?? 0) === 0 ? 'Complete Step 2 first' : ''}
-          >
-            {(assignPreviewLoading || assignPreviewFetching) ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Eye className="w-4 h-4" />
-            )}
-            {(assignPreviewLoading || assignPreviewFetching) ? 'Scanning...' : 'Preview Assignments'}
-          </button>
+          {/* Preview results */}
+          {assignPreviewData && (
+            <div className="mb-5 p-4 bg-white rounded-lg border border-teal-200">
+              <div className="grid grid-cols-3 divide-x divide-gray-100 mb-4">
+                <div className="text-center pr-4">
+                  <p className="text-2xl font-bold text-gray-700">{assignPreviewData.totalUnassigned}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Unassigned Employees</p>
+                </div>
+                <div className="text-center px-4">
+                  <p className="text-2xl font-bold text-teal-600">{assignPreviewData.canBeAssigned}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Will Be Assigned</p>
+                </div>
+                <div className="text-center pl-4">
+                  <p className="text-2xl font-bold text-orange-500">{assignPreviewData.cannotBeAssigned}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">No Match Found</p>
+                </div>
+              </div>
 
-          {assignPreviewData && assignPreviewData.canBeAssigned > 0 && (
+              {assignPreviewData.totalUnassigned === 0 ? (
+                <p className="text-sm text-green-700 font-medium text-center py-2">✓ All employees already assigned to a PM!</p>
+              ) : assignPreviewData.canBeAssigned === 0 ? (
+                <p className="text-sm text-orange-600 text-center py-2">
+                  No matches found. Complete Steps 1 &amp; 2 first.
+                </p>
+              ) : (
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Sample assignments (first {Math.min(assignPreviewData.preview.length, 8)})</p>
+                  {assignPreviewData.preview.slice(0, 8).map((row: any, i: number) => (
+                    <div key={i} className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-teal-50">
+                      <span className="text-sm text-gray-800 font-medium truncate max-w-[160px]" title={row.emp_name}>{row.emp_name}</span>
+                      <span className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded">{row.emp_grade}</span>
+                      <ArrowRight className="w-3 h-3 text-teal-400 flex-shrink-0" />
+                      <span className="text-sm text-teal-700 font-medium truncate max-w-[160px]" title={row.pm_name}>{row.pm_name}</span>
+                      <span className="text-xs px-1.5 py-0.5 bg-teal-100 text-teal-600 rounded">{row.pm_grade}</span>
+                      <span className="ml-auto text-xs text-gray-400">{row.score}pts</span>
+                    </div>
+                  ))}
+                  {assignPreviewData.canBeAssigned > 8 && (
+                    <p className="text-xs text-gray-400 text-center pt-1">+{assignPreviewData.canBeAssigned - 8} more assignments queued</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-3">
             <button
-              onClick={handleAutoAssign}
-              disabled={assignLoading}
-              className="flex items-center gap-2 px-5 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors text-sm font-semibold disabled:opacity-50 shadow-md"
+              onClick={() => triggerAssignPreview()}
+              disabled={assignPreviewLoading || assignPreviewFetching || (uploadStats?.activePMs ?? 0) === 0}
+              className="flex items-center gap-2 px-4 py-2.5 bg-white text-teal-700 border border-teal-300 rounded-lg hover:bg-teal-50 transition-colors text-sm font-medium disabled:opacity-50 shadow-sm"
+              title={(uploadStats?.activePMs ?? 0) === 0 ? 'Complete Step 2 first' : ''}
             >
-              {assignLoading ? (
+              {(assignPreviewLoading || assignPreviewFetching) ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
-                <CheckCircle2 className="w-4 h-4" />
+                <Eye className="w-4 h-4" />
               )}
-              {assignLoading ? 'Assigning...' : `Assign ${assignPreviewData.canBeAssigned} Employees to PMs`}
+              {(assignPreviewLoading || assignPreviewFetching) ? 'Scanning...' : 'Preview Assignments'}
             </button>
-          )}
 
-          {assignPreviewData && assignPreviewData.totalUnassigned === 0 && (
-            <a
-              href="/pm-report"
-              className="flex items-center gap-2 px-5 py-2.5 bg-[#0070AD] text-white rounded-lg hover:bg-[#005a8a] transition-colors text-sm font-semibold shadow-md"
-            >
-              <ArrowRight className="w-4 h-4" />
-              View PM Allocation Report
-            </a>
-          )}
+            {assignPreviewData && assignPreviewData.canBeAssigned > 0 && (
+              <button
+                onClick={handleAutoAssign}
+                disabled={assignLoading}
+                className="flex items-center gap-2 px-5 py-2.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors text-sm font-semibold disabled:opacity-50 shadow-md"
+              >
+                {assignLoading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="w-4 h-4" />
+                )}
+                {assignLoading ? 'Assigning...' : `Assign ${assignPreviewData.canBeAssigned} Employees to PMs`}
+              </button>
+            )}
+
+            {assignPreviewData && assignPreviewData.totalUnassigned === 0 && (
+              <a
+                href="/pm-report"
+                className="flex items-center gap-2 px-5 py-2.5 bg-[#0070AD] text-white rounded-lg hover:bg-[#005a8a] transition-colors text-sm font-semibold shadow-md"
+              >
+                <ArrowRight className="w-4 h-4" />
+                View PM Allocation Report
+              </a>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Automation Info */}
       <div className="bg-white rounded-lg shadow-md p-6">
@@ -782,7 +705,7 @@ export const DataUpload: React.FC = () => {
             </p>
           </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="border-l-4 border-blue-500 pl-4 py-2">
             <p className="font-medium text-gray-800 flex items-center gap-2">
               <span className="text-lg">🕘</span> Daily @ 9:00 AM
@@ -796,13 +719,6 @@ export const DataUpload: React.FC = () => {
             </p>
             <p className="text-sm text-gray-600 mt-1">Separation & Reassignment Check</p>
             <p className="text-xs text-gray-500 mt-1">Identifies PMs leaving and reassigns reportees</p>
-          </div>
-          <div className="border-l-4 border-green-500 pl-4 py-2">
-            <p className="font-medium text-gray-800 flex items-center gap-2">
-              <span className="text-lg">⏰</span> Every 6 Hours
-            </p>
-            <p className="text-sm text-gray-600 mt-1">Approval Reminders</p>
-            <p className="text-xs text-gray-500 mt-1">Sends reminders for pending approval requests</p>
           </div>
           <div className="border-l-4 border-purple-500 pl-4 py-2">
             <p className="font-medium text-gray-800 flex items-center gap-2">

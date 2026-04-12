@@ -11,7 +11,7 @@ export const pmApi = createApi({
         headers.set('Authorization', `Bearer ${token}`);
       }
       // Don't set Content-Type for file uploads - let browser set it with boundary
-      if (endpoint === 'uploadEmployees' || endpoint === 'uploadNewJoiners' || endpoint === 'uploadSeparations' || endpoint === 'uploadSkillReport' || endpoint === 'uploadPMs' || endpoint === 'uploadGAD' || endpoint === 'uploadBenchReport') {
+        if (endpoint === 'uploadEmployees' || endpoint === 'uploadNewJoiners' || endpoint === 'uploadSeparations' || endpoint === 'uploadSkillReport' || endpoint === 'uploadPMs' || endpoint === 'uploadGAD' || endpoint === 'uploadBenchReport' || endpoint === 'uploadLeaveReport') {
         headers.delete('Content-Type');
       }
       return headers;
@@ -170,8 +170,11 @@ export const pmApi = createApi({
         params: params && params.department_id ? { department_id: params.department_id } : undefined,
       }),
     }),
-    getUploadStats: builder.query<any, void>({
-      query: () => '/stats/upload-stats',
+    getUploadStats: builder.query<any, { department_id?: number } | void>({
+      query: (params) => ({
+        url: '/stats/upload-stats',
+        params: params && params.department_id ? { department_id: params.department_id } : undefined,
+      }),
       providesTags: ['UploadStats'],
     }),
     getEmployeesList: builder.query<{ data: any[]; pagination: { page: number; pageSize: number; totalRecords: number; totalPages: number } }, { status?: string; practice?: string; cu?: string; region?: string; page?: number; pageSize?: number; department_id?: number }>({
@@ -362,6 +365,10 @@ export const pmApi = createApi({
       query: (formData) => ({ url: '/upload/bench', method: 'POST', body: formData }),
       invalidatesTags: ['NewJoiners', 'UploadStats'],
     }),
+    uploadLeaveReport: builder.mutation<UploadResponse, FormData>({
+      query: (formData) => ({ url: '/upload/leave', method: 'POST', body: formData }),
+      invalidatesTags: ['UploadStats'],
+    }),
     // Unmapped employees
     getUnmappedEmployees: builder.query<{ count: number; data: any[]; pagination: any }, { page?: number; pageSize?: number; practice?: string; department_id?: number }>({
       query: (params = {}) => ({ url: '/employees/unmapped', params }),
@@ -476,6 +483,7 @@ export const {
   // GAD / Bench
   useUploadGADMutation,
   useUploadBenchReportMutation,
+  useUploadLeaveReportMutation,
   // Unmapped & Gradewise
   useGetUnmappedEmployeesQuery,
   useGetGradewisePMCapacityQuery,

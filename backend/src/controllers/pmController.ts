@@ -8,9 +8,10 @@ import { WorkflowAutomationService } from '../services/workflowAutomationService
 import { schedulerService } from '../services/schedulerService';
 import { practiceReportService } from '../services/practiceReportService';
 import { discrepancyReportService } from '../services/discrepancyReportService';
-import { parseEmployeeExcel, parsePMExcel, parseSeparationExcel, parseSkillReportExcel, parseGADExcel, extractPMsFromGAD, getSkillReportHeaders, getFileHeaders } from '../utils/excelParser';
+import { parseEmployeeExcel, parsePMExcel, parseSeparationExcel, parseSkillReportExcel, parseGADExcel, parseLeaveReportExcel, extractPMsFromGAD, getSkillReportHeaders, getFileHeaders } from '../utils/excelParser';
 import { logger } from '../utils/logger';
 import pool, { refreshAlignmentCache } from '../config/database';
+import { Employee } from '../types';
 
 const dataService = new DataIngestionService();
 const bulkService = new BulkUploadService();
@@ -50,16 +51,23 @@ const generateDiscrepancySnapshot = async (triggeredBy: string) => {
 
 const getUserDepartmentPractice = (req: Request): string => {
   const user = (req as any).user;
-  
-  // For Super Admin, check if they selected a different department via query parameter
-  if (user?.role === 'Super Admin' && req.query.department_id) {
-    const deptId = parseInt(req.query.department_id as string);
-    const practice = DEPARTMENT_ID_TO_PRACTICE[deptId];
-    if (practice) {
-      return practice;
+
+  // For Super Admin, check if they selected a different department via query parameter or request body
+  if (user?.role === 'Super Admin') {
+    // Check query parameter first
+    if (req.query.department_id) {
+      const deptId = parseInt(req.query.department_id as string);
+      const practice = DEPARTMENT_ID_TO_PRACTICE[deptId];
+      if (practice) {
+        return practice;
+      }
+    }
+    // Check request body for practice (from FormData)
+    if (req.body.practice) {
+      return req.body.practice.trim();
     }
   }
-  
+
   // Otherwise, return user's default department
   return (user?.department_name || user?.practice || '').trim();
 };
@@ -537,9 +545,172 @@ export const uploadBenchReport = async (req: Request, res: Response) => {
   }
 };
 
+  /**
+   * Upload Leave Report
+   * Logic:
+   * 1. Parse Leave Report to get employees with GGID and leave info
+   * 2. Look up each GGID in employees table (from GAD) to get practice
+   * 3. Enrich leave data with practice info
+   * 4. Update employees table with leave information
+   */
+  export const uploadLeaveReport = async (req: Request, res: Response) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+      logger.info('Uploading Leave Report', { filename: req.file.originalname, size: req.file.size });
+      
+      // Parse the Leave Report
+      const leaveEmployees = parseLeaveReportExcel(req.file.buffer);
+
+      if (leaveEmployees.length === 0) {
+        return res.status(400).json({ error: 'No valid employee records found in Leave file.' });
+      }
+
+      console.log(`📋 Leave Report: ${leaveEmployees.length} employees parsed`);
+
+      // Get all GGIDs from Leave Report
+      const leaveGGIDs = leaveEmployees.map(e => e.employee_id);
+
+      // Look up these GGIDs in the employees table to get practice + other details
+      const gadEmployeesResult = await pool.query(
+        `SELECT employee_id, practice, cu, region, grade 
+         FROM employees 
+         WHERE employee_id = ANY($1::text[])`,
+        [leaveGGIDs]
+      );
+
+      // Create a map of GGID -> GAD practice details
+      const gadMap = new Map(
+        gadEmployeesResult.rows.map(row => [row.employee_id, row])
+      );
+
+      console.log(`🔍 Found ${gadMap.size} employees in GAD out of ${leaveGGIDs.length} in Leave Report`);
+
+      // Enrich leave employees with practice from GAD
+      const enrichedEmployees = leaveEmployees
+        .map(emp => {
+          const gadData = gadMap.get(emp.employee_id);
+          if (!gadData) {
+            console.log(`⚠️  GGID ${emp.employee_id} in Leave Report but not found in GAD - skipping`);
+            return null;
+          }
+          return {
+            ...emp,
+            practice: gadData.practice,
+            cu: gadData.cu,
+            region: gadData.region,
+            grade: gadData.grade,
+          };
+        })
+        .filter((emp): emp is Employee => emp !== null);
+
+      console.log(`✅ Enriched ${enrichedEmployees.length} employees with practice data from GAD`);
+
+      if (enrichedEmployees.length === 0) {
+        return res.status(400).json({
+          error: 'No employees from Leave Report found in GAD. Please upload GAD Report first.',
+          total_in_leave: leaveEmployees.length,
+          matched_in_gad: 0,
+        });
+      }
+
+      // Filter by user's practice
+      const userPractice = ensureUserDepartment(req, res);
+      if (!userPractice) return;
+
+      const filteredEmployees = enrichedEmployees.filter(
+        e => (e.practice || '').toLowerCase().trim() === userPractice.toLowerCase().trim()
+      );
+
+      const distinctPractices = [...new Set(enrichedEmployees.map(e => e.practice).filter(Boolean))].sort();
+      const ignoredPractices = distinctPractices.filter(p => 
+        p.toLowerCase().trim() !== userPractice.toLowerCase().trim()
+      );
+
+      if (ignoredPractices.length > 0) {
+        logger.info('[uploadLeaveReport] Ignoring rows for other practices', { 
+          ignoredPractices, totalRows: enrichedEmployees.length, acceptedPractice: userPractice 
+        });
+      }
+
+      if (filteredEmployees.length === 0) {
+        return res.status(400).json({
+          error: `No employees found for your department (${userPractice}) in this file. ` +
+                 `Found ${enrichedEmployees.length} records across other practices.`,
+          total_in_file: leaveEmployees.length,
+          matched_in_gad: enrichedEmployees.length,
+          practices_found: distinctPractices,
+        });
+      }
+
+      logger.info(`Leave Report: ${leaveEmployees.length} total, ${enrichedEmployees.length} matched with GAD, ${filteredEmployees.length} for practice "${userPractice}"`);
+
+      // Update employees table with leave information
+      const updatePromises = filteredEmployees.map(emp =>
+        pool.query(
+          `UPDATE employees 
+           SET leave_type = $2,
+               leave_status = $3,
+               leave_start_date = $4,
+               leave_end_date = $5,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE employee_id = $1`,
+          [
+            emp.employee_id,
+            emp.leave_type || null,
+            emp.leave_status || null,
+            emp.leave_start_date || null,
+            emp.leave_end_date || null,
+          ]
+        )
+      );
+
+      await Promise.all(updatePromises);
+
+      // Detect exceptions: employees with long leave (> 30 days)
+      const longLeaveResult = await pool.query(`
+        INSERT INTO exceptions (employee_id, exception_type, description, status)
+        SELECT e.employee_id,
+               'ON_LONG_LEAVE',
+               'Employee on leave from ' || COALESCE(e.leave_start_date::text,'?') || 
+               ' to ' || COALESCE(e.leave_end_date::text,'?'),
+               'open'
+        FROM employees e
+        WHERE e.employee_id = ANY($1::text[])
+          AND e.leave_start_date IS NOT NULL
+          AND e.leave_end_date IS NOT NULL
+          AND (e.leave_end_date - e.leave_start_date) > 30
+        ON CONFLICT (employee_id, exception_type) WHERE status = 'open'
+        DO UPDATE SET description = EXCLUDED.description
+      `, [filteredEmployees.map(e => e.employee_id)]
+      );
+
+      const practiceLabel = ` · Practice: ${userPractice}`;
+      logger.info('Leave Report upload complete', { 
+        employees_updated: filteredEmployees.length, 
+        long_leave_exceptions: longLeaveResult.rowCount ?? 0, 
+        practice: userPractice 
+      });
+
+      const discrepancy_summary = await generateDiscrepancySnapshot('leave_upload');
+
+      res.json({
+        message: `Leave Report processed: ${filteredEmployees.length} employees updated${practiceLabel}`,
+        employees_updated: filteredEmployees.length,
+        long_leave_exceptions: longLeaveResult.rowCount ?? 0,
+        total_in_file: leaveEmployees.length,
+        matched_in_gad: enrichedEmployees.length,
+        practice_filter: userPractice,
+        discrepancy_summary,
+      });
+    } catch (error: any) {
+      logger.error('Error uploading Leave Report', error);
+      res.status(500).json({ error: error.message });
+    }
+  };
+
 export const uploadSkillReport = async (req: Request, res: Response) => {
   try {
-    console.log('Upload skill report request received');
     console.log('File:', req.file ? req.file.originalname : 'NO FILE');
 
     if (!req.file) {
@@ -777,223 +948,70 @@ export const getNewJoinersList = async (req: Request, res: Response) => {
 };
 
 // Get all employees (Bench/GAD list)
-// ── Shared SQL builder for the enriched employee list ─────────────────────────
-function buildEmployeeListSQL(userPractice: string, filters: Record<string, any>): { baseQuery: string; params: any[]; paramIndex: number } {
-  const { status, practice, cu, region, grade, account, search } = filters;
-  const params: any[] = [];
-  let paramIndex = 1;
-
-  let whereClause = ` AND e.practice = $${paramIndex}`;
-  params.push(userPractice);
-  paramIndex++;
-
-  if (status) {
-    whereClause += ` AND e.status = $${paramIndex}`;
-    params.push(status);
-    paramIndex++;
-  }
-  if (practice) {
-    whereClause += ` AND e.practice ILIKE $${paramIndex}`;
-    params.push(`%${practice}%`);
-    paramIndex++;
-  }
-  if (cu) {
-    whereClause += ` AND e.cu ILIKE $${paramIndex}`;
-    params.push(`%${cu}%`);
-    paramIndex++;
-  }
-  if (region) {
-    whereClause += ` AND e.region ILIKE $${paramIndex}`;
-    params.push(`%${region}%`);
-    paramIndex++;
-  }
-  if (grade) {
-    whereClause += ` AND e.grade ILIKE $${paramIndex}`;
-    params.push(`%${grade}%`);
-    paramIndex++;
-  }
-  if (account) {
-    whereClause += ` AND e.account ILIKE $${paramIndex}`;
-    params.push(`%${account}%`);
-    paramIndex++;
-  }
-  if (search) {
-    whereClause += ` AND (e.name ILIKE $${paramIndex} OR e.employee_id ILIKE $${paramIndex})`;
-    params.push(`%${search}%`);
-    paramIndex++;
-  }
-
-  const baseQuery = `
-    FROM employees e
-    LEFT JOIN people_managers pm   ON e.current_pm_id = pm.employee_id
-    LEFT JOIN separation_reports sr ON e.employee_id  = sr.employee_id
-    WHERE 1=1
-    ${whereClause}
-  `;
-
-  return { baseQuery, params, paramIndex };
-}
-
-const EMPLOYEE_SELECT = `
-  SELECT
-    e.employee_id,
-    e.name,
-    e.email,
-    e.grade,
-    e.practice,
-    e.sub_practice,
-    e.cu,
-    e.region,
-    e.account,
-    e.location,
-    e.skill                            AS skill,
-    e.status,
-    e.joining_date,
-    e.hire_reason,
-    e.bench_status,
-    e.leave_type,
-    e.leave_start_date,
-    e.leave_end_date,
-    e.upload_source,
-    e.is_new_joiner,
-    e.current_pm_id,
-    pm.name                            AS pm_name,
-    pm.grade                           AS pm_grade,
-    pm.email                           AS pm_email,
-    pm.cu                              AS pm_cu,
-    pm.region                          AS pm_region,
-    sr.lwd                             AS separation_lwd,
-    sr.separation_type,
-    sr.designation,
-    sr.reason                          AS separation_reason,
-    sr.status                          AS separation_status
-`;
-
 export const getAllEmployees = async (req: Request, res: Response) => {
   try {
-    const { status, practice, cu, region, grade, account, search, page = '1', pageSize = '50' } = req.query;
+    const { status, practice, cu, region, page = '1', pageSize = '50' } = req.query;
     const pageNum = parseInt(page as string);
     const pageSizeNum = parseInt(pageSize as string);
     const offset = (pageNum - 1) * pageSizeNum;
-
+    
     const userPractice = ensureUserDepartment(req, res);
     if (!userPractice) return;
 
-    const { baseQuery, params, paramIndex } = buildEmployeeListSQL(userPractice, { status, practice, cu, region, grade, account, search });
+    let query = 'SELECT e.*, pm.name as pm_name FROM employees e LEFT JOIN people_managers pm ON e.current_pm_id = pm.employee_id WHERE 1=1';
+    let countQuery = 'SELECT COUNT(*) FROM employees e WHERE 1=1';
+    const params: any[] = [];
+    let paramIndex = 1;
 
-    const countResult = await pool.query(`SELECT COUNT(*) ${baseQuery}`, params);
+    query += ` AND e.practice = $${paramIndex}`;
+    countQuery += ` AND e.practice = $${paramIndex}`;
+    params.push(userPractice);
+    paramIndex++;
+
+    if (status) {
+      query += ` AND e.status = $${paramIndex}`;
+      countQuery += ` AND e.status = $${paramIndex}`;
+      params.push(status);
+      paramIndex++;
+    }
+    if (practice) {
+      query += ` AND e.practice = $${paramIndex}`;
+      countQuery += ` AND e.practice = $${paramIndex}`;
+      params.push(practice);
+      paramIndex++;
+    }
+    if (cu) {
+      query += ` AND e.cu = $${paramIndex}`;
+      countQuery += ` AND e.cu = $${paramIndex}`;
+      params.push(cu);
+      paramIndex++;
+    }
+    if (region) {
+      query += ` AND e.region = $${paramIndex}`;
+      countQuery += ` AND e.region = $${paramIndex}`;
+      params.push(region);
+      paramIndex++;
+    }
+
+    // Get total count for pagination
+    const countResult = await pool.query(countQuery, params);
     const totalRecords = parseInt(countResult.rows[0].count);
 
-    const dataParams = [...params, pageSizeNum, offset];
-    const dataQuery = `${EMPLOYEE_SELECT} ${baseQuery} ORDER BY e.name ASC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+    query += ` ORDER BY e.created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+    params.push(pageSizeNum, offset);
 
-    const result = await pool.query(dataQuery, dataParams);
+    const result = await pool.query(query, params);
     res.json({
       data: result.rows,
-      pagination: { page: pageNum, pageSize: pageSizeNum, totalRecords, totalPages: Math.ceil(totalRecords / pageSizeNum) }
+      pagination: {
+        page: pageNum,
+        pageSize: pageSizeNum,
+        totalRecords,
+        totalPages: Math.ceil(totalRecords / pageSizeNum)
+      }
     });
   } catch (error: any) {
     logger.error('Error fetching employees', error);
-    res.status(500).json({ error: error.message || 'Database error' });
-  }
-};
-
-// ── Export ALL employees as CSV (no pagination) ────────────────────────────────
-export const exportAllEmployees = async (req: Request, res: Response) => {
-  try {
-    const { status, practice, cu, region, grade, account, search, columns } = req.query;
-
-    const userPractice = ensureUserDepartment(req, res);
-    if (!userPractice) return;
-
-    const { baseQuery, params } = buildEmployeeListSQL(userPractice, { status, practice, cu, region, grade, account, search });
-
-    const dataQuery = `${EMPLOYEE_SELECT} ${baseQuery} ORDER BY e.name ASC`;
-    const result = await pool.query(dataQuery, params);
-    const rows = result.rows;
-
-    // Column definitions: key → CSV header label
-    const ALL_COLUMNS: Record<string, string> = {
-      employee_id:       'Employee ID',
-      name:              'Name',
-      email:             'Email',
-      grade:             'Grade',
-      practice:          'Practice',
-      sub_practice:      'Sub Practice',
-      cu:                'CU',
-      region:            'Region',
-      account:           'Account',
-      location:          'Location',
-      skill:             'Skill',
-      status:            'Status',
-      joining_date:      'Joining Date',
-      hire_reason:       'Hire Reason',
-      bench_status:      'Bench Status',
-      leave_type:        'Leave Type',
-      leave_start_date:  'Leave Start Date',
-      leave_end_date:    'Leave End Date',
-      upload_source:     'Upload Source',
-      is_new_joiner:     'New Joiner',
-      current_pm_id:     'PM ID',
-      pm_name:           'PM Name',
-      pm_grade:          'PM Grade',
-      pm_email:          'PM Email',
-      pm_cu:             'PM CU',
-      pm_region:         'PM Region',
-      separation_lwd:    'Last Working Date',
-      separation_type:   'Separation Type',
-      designation:       'Designation',
-      separation_reason: 'Separation Reason',
-      separation_status: 'Separation Status',
-    };
-
-    // Determine which columns to include (from query param or all)
-    let selectedKeys: string[];
-    if (columns && typeof columns === 'string' && columns.trim()) {
-      selectedKeys = columns.split(',').map(c => c.trim()).filter(c => ALL_COLUMNS[c]);
-    } else {
-      selectedKeys = Object.keys(ALL_COLUMNS);
-    }
-
-    const escape = (val: any): string => {
-      if (val === null || val === undefined) return '';
-      const s = String(val);
-      if (s.includes(',') || s.includes('"') || s.includes('\n')) return `"${s.replace(/"/g, '""')}"`;
-      return s;
-    };
-
-    // Format a date value safely — Postgres returns Date objects or ISO strings.
-    // We use local date parts to avoid UTC-midnight off-by-one errors.
-    const formatDate = (val: any): string => {
-      if (!val) return '';
-      const d = new Date(val);
-      if (isNaN(d.getTime())) return String(val).split('T')[0] || '';
-      // Use UTC parts since Postgres stores dates as UTC midnight
-      const yyyy = d.getUTCFullYear();
-      const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
-      const dd = String(d.getUTCDate()).padStart(2, '0');
-      return `${yyyy}-${mm}-${dd}`;
-    };
-
-    const headerLine = selectedKeys.map(k => ALL_COLUMNS[k]).join(',');
-    const csvLines = rows.map(row =>
-      selectedKeys.map(k => {
-        const val = row[k];
-        if (k === 'joining_date' || k === 'leave_start_date' || k === 'leave_end_date' || k === 'separation_lwd') {
-          return escape(formatDate(val));
-        }
-        if (k === 'is_new_joiner') return val ? 'Yes' : 'No';
-        if (k === 'current_pm_id') return escape(val || '');
-        return escape(val);
-      }).join(',')
-    );
-
-    const csv = [headerLine, ...csvLines].join('\n');
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', 'attachment; filename="employees_export.csv"');
-    res.send(csv);
-  } catch (error: any) {
-    logger.error('Error exporting employees CSV', error);
     res.status(500).json({ error: error.message || 'Database error' });
   }
 };
@@ -1552,7 +1570,11 @@ export const getUploadStats = async (req: Request, res: Response) => {
       SELECT 
         (SELECT COUNT(*) FROM employees WHERE status = 'active' AND practice = $1) as "totalEmployees",
         (SELECT COUNT(*) FROM people_managers WHERE is_active = true AND practice = $1) as "activePMs",
-        (SELECT COUNT(*) FROM separation_reports sr JOIN employees e ON sr.employee_id = e.employee_id WHERE sr.lwd >= CURRENT_DATE AND e.practice = $1) as "pendingSeparations",
+        (SELECT COUNT(DISTINCT sr.id) FROM separation_reports sr 
+         LEFT JOIN people_managers pm ON sr.employee_id = pm.employee_id
+         LEFT JOIN employees e ON sr.employee_id = e.employee_id
+         WHERE sr.lwd >= CURRENT_DATE AND sr.status = 'pending'
+         AND (pm.practice = $1 OR e.practice = $1)) as "pendingSeparations",
         (SELECT COUNT(*) FROM employees WHERE is_new_joiner = true AND current_pm_id IS NULL AND practice = $1) as "newJoiners",
         (SELECT COUNT(*) FROM pm_assignments pa JOIN employees e ON pa.employee_id = e.employee_id WHERE pa.status = 'pending' AND e.practice = $1) as "pendingAssignments",
         (SELECT COUNT(*) FROM skill_repository WHERE practice = $1) as "skillCount"
@@ -2791,6 +2813,12 @@ export const overridePMAssignment = async (req: Request, res: Response) => {
     });
 
     logger.info('Manual PM override applied', { employeeId, oldPmId, newPmId, justification });
+
+    // Refresh materialized views so all filters (NO_PM_FOUND, misalignments)
+    // and CSV exports immediately reflect the newly assigned PM.
+    refreshAlignmentCache().catch((err: any) =>
+      logger.warn('Materialized view refresh failed after manual override (non-blocking)', err)
+    );
 
     res.json({
       message: `PM overridden: ${employee.name} → ${newPm.name}`,

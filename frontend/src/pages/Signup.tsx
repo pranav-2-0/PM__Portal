@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useState, useEffect } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 import {
   User,
   Mail,
@@ -8,22 +8,22 @@ import {
   CheckCircle,
   Loader,
   ChevronDown,
-} from "lucide-react";
-import { authService } from "../services/authService";
-import { useAuth } from "../context/AuthContext";
-import { SORTED_PRACTICES } from "../constants/practices";
+} from 'lucide-react';
+import { authService } from '../services/authService';
+import { useAuth } from '../context/AuthContext';
+import { SORTED_PRACTICES } from '../constants/practices';
 
 // Map practice names to department IDs for backend
 const PRACTICE_TO_DEPARTMENT_ID: Record<string, number> = {
-  "CCA-FS": 1,
-  "Cloud & Infrastructure": 2,
-  "Data & AI": 3,
-  "DCX-DE": 4,
-  "DCX-FS": 5,
-  "Digital Engineering": 6,
-  "Enterprise Architecture": 7,
-  "Insights & Data": 8,
-  SAP: 9,
+  'CCA-FS': 1,
+  'Cloud & Infrastructure': 2,
+  'Data & AI': 3,
+  'DCX-DE': 4,
+  'DCX-FS': 5,
+  'Digital Engineering': 6,
+  'Enterprise Architecture': 7,
+  'Insights & Data': 8,
+  'SAP': 9,
 };
 
 interface Department {
@@ -32,18 +32,18 @@ interface Department {
   description: string;
 }
 
-const ROLES = ["Super Admin", "Admin", "Employee", "Staff"];
+const ROLES = ['Super Admin', 'Admin', 'Employee'];
 
 export default function Signup() {
   const navigate = useNavigate();
   const { login } = useAuth();
   const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    password: "",
-    confirmPassword: "",
-    department_id: "",
-    role: "",
+    name: '',
+    email: '',
+    password: '',
+    confirmPassword: '',
+    department_id: '',
+    role: '',
   });
   const [departments, setDepartments] = useState<Department[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -54,19 +54,17 @@ export default function Signup() {
   // Use SORTED_PRACTICES from constants instead of fetching from API
   useEffect(() => {
     // Map practices to department format for consistent UI
-    const practicesDepts: Department[] = SORTED_PRACTICES.map(
-      (practice, index) => ({
-        id: PRACTICE_TO_DEPARTMENT_ID[practice] || index + 1,
-        name: practice,
-        description: `${practice} Practice`,
-      }),
-    );
+    const practicesDepts: Department[] = SORTED_PRACTICES.map((practice, index) => ({
+      id: PRACTICE_TO_DEPARTMENT_ID[practice] || index + 1,
+      name: practice,
+      description: `${practice} Practice`,
+    }));
     setDepartments(practicesDepts);
     setLoadingDepts(false);
   }, []);
 
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
     const { name, value } = e.target;
     setFormData((prev) => ({
@@ -76,7 +74,7 @@ export default function Signup() {
     setError(null);
 
     // Validate password on change
-    if (name === "password") {
+    if (name === 'password') {
       validatePassword(value);
     }
   };
@@ -85,19 +83,19 @@ export default function Signup() {
     const errors: string[] = [];
 
     if (password.length < 6) {
-      errors.push("At least 6 characters");
+      errors.push('At least 6 characters');
     }
     if (!/[A-Z]/.test(password)) {
-      errors.push("One uppercase letter");
+      errors.push('One uppercase letter');
     }
     if (!/[a-z]/.test(password)) {
-      errors.push("One lowercase letter");
+      errors.push('One lowercase letter');
     }
     if (!/[0-9]/.test(password)) {
-      errors.push("One number");
+      errors.push('One number');
     }
     if (!/[!@#$%^&*]/.test(password)) {
-      errors.push("One special character (!@#$%^&*)");
+      errors.push('One special character (!@#$%^&*)');
     }
 
     setPasswordErrors(errors);
@@ -111,29 +109,27 @@ export default function Signup() {
     try {
       // Validate inputs
       if (!formData.name || !formData.email || !formData.password) {
-        throw new Error("Name, email, and password are required");
+        throw new Error('Name, email, and password are required');
       }
 
       // Role is mandatory
       if (!formData.role) {
-        throw new Error("Role selection is mandatory");
+        throw new Error('Role selection is mandatory');
       }
 
       // Department is required except for Super Admin
-      if (formData.role !== "Super Admin" && !formData.department_id) {
-        throw new Error(
-          "Practice/Department selection is required for this role",
-        );
+      if (formData.role !== 'Super Admin' && !formData.department_id) {
+        throw new Error('Practice/Department selection is required for this role');
       }
 
       // Validate passwords match
       if (formData.password !== formData.confirmPassword) {
-        throw new Error("Passwords do not match");
+        throw new Error('Passwords do not match');
       }
 
       // Validate password strength
       if (passwordErrors.length > 0) {
-        throw new Error("Password does not meet security requirements");
+        throw new Error('Password does not meet security requirements');
       }
 
       // Call signup API
@@ -145,7 +141,7 @@ export default function Signup() {
       };
 
       // Only add department_id if not Super Admin
-      if (formData.role !== "Super Admin" && formData.department_id) {
+      if (formData.role !== 'Super Admin' && formData.department_id) {
         signupData.department_id = parseInt(formData.department_id);
       }
 
@@ -155,16 +151,16 @@ export default function Signup() {
         login(response.user);
       }
 
-      console.log("Signup successful:", response);
+      console.log('Signup successful:', response);
 
       // Redirect to dashboard
-      navigate("/");
+      navigate('/');
     } catch (err: any) {
-      console.error("Signup error:", err);
-
+      console.error('Signup error:', err);
+      
       // Better error message handling
-      let errorMessage = "Signup failed. Please try again.";
-
+      let errorMessage = 'Signup failed. Please try again.';
+      
       if (err.message) {
         errorMessage = err.message;
       } else if (err.response?.data?.message) {
@@ -172,7 +168,7 @@ export default function Signup() {
       } else if (err.response?.data?.error) {
         errorMessage = err.response.data.error;
       }
-
+      
       setError(errorMessage);
     } finally {
       setLoading(false);
@@ -180,11 +176,11 @@ export default function Signup() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-capgemini py-12 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4">
       <div className="w-full max-w-md">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-capgemini-blue rounded-full mb-4">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-full mb-4">
             <User className="text-white" size={32} />
           </div>
           <h1 className="text-3xl font-bold text-gray-800">Create Account</h1>
@@ -196,10 +192,7 @@ export default function Signup() {
           {/* Error Message */}
           {error && (
             <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-200 rounded-lg">
-              <AlertCircle
-                size={20}
-                className="text-red-600 flex-shrink-0 mt-0.5"
-              />
+              <AlertCircle size={20} className="text-red-600 flex-shrink-0 mt-0.5" />
               <div>
                 <p className="font-semibold text-red-800">Signup Error</p>
                 <p className="text-sm text-red-700 mt-1">{error}</p>
@@ -211,10 +204,7 @@ export default function Signup() {
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Name Field */}
             <div>
-              <label
-                htmlFor="name"
-                className="block text-sm font-semibold text-gray-700 mb-2"
-              >
+              <label htmlFor="name" className="block text-sm font-semibold text-gray-700 mb-2">
                 Full Name
               </label>
               <div className="relative">
@@ -229,7 +219,7 @@ export default function Signup() {
                   value={formData.name}
                   onChange={handleChange}
                   placeholder="John Doe"
-                  className="input-field pl-10"
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
                   disabled={loading}
                 />
               </div>
@@ -237,10 +227,7 @@ export default function Signup() {
 
             {/* Email Field */}
             <div>
-              <label
-                htmlFor="email"
-                className="block text-sm font-semibold text-gray-700 mb-2"
-              >
+              <label htmlFor="email" className="block text-sm font-semibold text-gray-700 mb-2">
                 Email Address
               </label>
               <div className="relative">
@@ -255,68 +242,14 @@ export default function Signup() {
                   value={formData.email}
                   onChange={handleChange}
                   placeholder="your@email.com"
-                  className="input-field pl-10"
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
                   disabled={loading}
                 />
               </div>
             </div>
 
-            {/* Practice/Department Field - Hidden for Super Admin */}
-            {formData.role !== "Super Admin" && (
-              <div>
-                <label
-                  htmlFor="department_id"
-                  className="block text-sm font-semibold text-gray-700 mb-2"
-                >
-                  Practice *
-                </label>
-                <div className="relative">
-                  <ChevronDown
-                    size={18}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
-                  />
-                  <select
-                    id="department_id"
-                    name="department_id"
-                    value={formData.department_id}
-                    onChange={handleChange}
-                    className="input-field pr-10 appearance-none bg-white"
-                    disabled={loading || loadingDepts}
-                  >
-                    <option value="">Select your practice</option>
-                    {departments.map((dept) => (
-                      <option key={dept.id} value={dept.id}>
-                        {dept.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {loadingDepts && (
-                  <p className="text-xs text-gray-500 mt-1">
-                    Loading practices...
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* Super Admin Notice */}
-            {formData.role === "Super Admin" && (
-              <div className="p-4 bg-capgemini-gray-50 border border-capgemini-blue rounded-lg">
-                <p className="text-sm text-capgemini-blue font-semibold">
-                  Super Admin Privileges
-                </p>
-                <p className="text-xs text-capgemini-blue-dark mt-2">
-                  You will have access to all practices and can switch between
-                  them after login.
-                </p>
-              </div>
-            )}
-
             <div>
-              <label
-                htmlFor="role"
-                className="block text-sm font-semibold text-gray-700 mb-2"
-              >
+              <label htmlFor="role" className="block text-sm font-semibold text-gray-700 mb-2">
                 Role *
               </label>
               <div className="relative">
@@ -329,7 +262,7 @@ export default function Signup() {
                   name="role"
                   value={formData.role}
                   onChange={handleChange}
-                  className="input-field pr-10 appearance-none bg-white"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors appearance-none bg-white pr-10"
                   disabled={loading}
                 >
                   <option value="">Select your role</option>
@@ -342,12 +275,48 @@ export default function Signup() {
               </div>
             </div>
 
+            {/* Practice/Department Field - Hidden for Super Admin */}
+            {formData.role !== 'Super Admin' && (
+            <div>
+              <label htmlFor="department_id" className="block text-sm font-semibold text-gray-700 mb-2">
+                Practice *
+              </label>
+              <div className="relative">
+                <ChevronDown
+                  size={18}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+                />
+                <select
+                  id="department_id"
+                  name="department_id"
+                  value={formData.department_id}
+                  onChange={handleChange}
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors appearance-none bg-white pr-10"
+                  disabled={loading || loadingDepts}
+                >
+                  <option value="">Select your practice</option>
+                  {departments.map((dept) => (
+                    <option key={dept.id} value={dept.id}>
+                      {dept.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {loadingDepts && <p className="text-xs text-gray-500 mt-1">Loading practices...</p>}
+            </div>
+            )}
+
+            {/* Super Admin Notice */}
+            {formData.role === 'Super Admin' && (
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-sm text-blue-800 font-semibold">Super Admin Privileges</p>
+                <p className="text-xs text-blue-700 mt-2">You will have access to all practices and can switch between them after login.</p>
+              </div>
+            )}
+
             {/* Password Field */}
             <div>
-              <label
-                htmlFor="password"
-                className="block text-sm font-semibold text-gray-700 mb-2"
-              >
+              <label htmlFor="password" className="block text-sm font-semibold text-gray-700 mb-2">
                 Password
               </label>
               <div className="relative">
@@ -362,7 +331,7 @@ export default function Signup() {
                   value={formData.password}
                   onChange={handleChange}
                   placeholder="Enter password"
-                  className="input-field pl-10"
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
                   disabled={loading}
                 />
               </div>
@@ -370,23 +339,21 @@ export default function Signup() {
               {/* Password Requirements */}
               {formData.password && (
                 <div className="mt-3 p-3 bg-gray-50 rounded-lg">
-                  <p className="text-xs font-semibold text-gray-700 mb-2">
-                    Requirements:
-                  </p>
+                  <p className="text-xs font-semibold text-gray-700 mb-2">Requirements:</p>
                   <div className="space-y-1">
                     {[
-                      "At least 6 characters",
-                      "One uppercase letter",
-                      "One lowercase letter",
-                      "One number",
-                      "One special character (!@#$%^&*)",
+                      'At least 6 characters',
+                      'One uppercase letter',
+                      'One lowercase letter',
+                      'One number',
+                      'One special character (!@#$%^&*)',
                     ].map((req) => {
                       const isMissing = passwordErrors.includes(req);
                       return (
                         <div
                           key={req}
                           className={`flex items-center gap-2 text-xs ${
-                            isMissing ? "text-red-600" : "text-green-600"
+                            isMissing ? 'text-red-600' : 'text-green-600'
                           }`}
                         >
                           {isMissing ? (
@@ -405,10 +372,7 @@ export default function Signup() {
 
             {/* Confirm Password Field */}
             <div>
-              <label
-                htmlFor="confirmPassword"
-                className="block text-sm font-semibold text-gray-700 mb-2"
-              >
+              <label htmlFor="confirmPassword" className="block text-sm font-semibold text-gray-700 mb-2">
                 Confirm Password
               </label>
               <div className="relative">
@@ -423,16 +387,14 @@ export default function Signup() {
                   value={formData.confirmPassword}
                   onChange={handleChange}
                   placeholder="Confirm password"
-                  className="input-field pl-10"
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
                   disabled={loading}
                 />
               </div>
               {formData.password &&
                 formData.confirmPassword &&
                 formData.password !== formData.confirmPassword && (
-                  <p className="text-xs text-red-600 mt-1">
-                    Passwords do not match
-                  </p>
+                  <p className="text-xs text-red-600 mt-1">Passwords do not match</p>
                 )}
             </div>
 
@@ -447,9 +409,9 @@ export default function Signup() {
                 !formData.confirmPassword ||
                 formData.password !== formData.confirmPassword ||
                 !formData.role ||
-                (formData.role !== "Super Admin" && !formData.department_id)
+                (formData.role !== 'Super Admin' && !formData.department_id)
               }
-              className="w-full bg-gradient-capgemini text-white font-semibold py-2.5 rounded-lg hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold py-2.5 rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {loading ? (
                 <>
@@ -457,7 +419,7 @@ export default function Signup() {
                   Creating Account...
                 </>
               ) : (
-                "Create Account"
+                'Create Account'
               )}
             </button>
           </form>
@@ -472,12 +434,10 @@ export default function Signup() {
             </div>
           </div>
 
-          <p className="text-center text-capgemini-gray-600">
-            Already have an account?{" "}
-            <Link
-              to="/login"
-              className="text-capgemini-blue font-semibold hover:underline"
-            >
+          {/* Login Link */}
+          <p className="text-center text-gray-600">
+            Already have an account?{' '}
+            <Link to="/login" className="text-blue-600 font-semibold hover:underline">
               Sign in here
             </Link>
           </p>

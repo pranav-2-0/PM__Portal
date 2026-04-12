@@ -14,7 +14,6 @@ import {
   getNewJoiners,
   getNewJoinersList,
   getAllEmployees,
-  exportAllEmployees,
   getAllPMs,
   getAllSeparations,
   getPMDetailReport,
@@ -76,6 +75,7 @@ import {
   // GAD / Bench uploads
   uploadGAD,
   uploadBenchReport,
+  uploadLeaveReport,
   // Gradewise PM Capacity
   getGradewisePMCapacity,
   // GAD Analysis Report
@@ -114,14 +114,14 @@ router.post('/upload/new-joiners', upload.single('file'), uploadNewJoiners);
 router.post('/upload/pms', upload.single('file'), uploadPMs);
 router.post('/upload/separations', upload.single('file'), uploadSeparations);
 router.post('/upload/skills', upload.single('file'), uploadSkillReport);
-router.post('/upload/gad', upload.single('file'), uploadGAD);
-router.post('/upload/bench', upload.single('file'), uploadBenchReport);
+router.post('/upload/gad', requireAdmin, upload.single('file'), uploadGAD);
+router.post('/upload/bench', requireAdmin, upload.single('file'), uploadBenchReport);
+router.post('/upload/leave', requireAdmin, upload.single('file'), uploadLeaveReport);
 
 // PM matching routes
 router.get('/employees/new-joiners', getNewJoiners);
 router.get('/employees/new-joiners/list', getNewJoinersList);
 router.get('/employees/list', getAllEmployees);
-router.get('/employees/export', exportAllEmployees);
 router.patch('/employees/:employeeId/freeze', setEmployeeFreeze);
 router.get('/pms/list', getAllPMs);
 router.get('/pms/auto-generate/preview', previewAutoGeneratePMs);
