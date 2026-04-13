@@ -6,7 +6,6 @@ import People from "./pages/People";
 import PMManagement from "./pages/PMManagement";
 import Alignment from "./pages/Alignment";
 import Reports from "./pages/Reports";
-import DiscrepancyReport from "./pages/DiscrepancyReport";
 import Settings from "./pages/Settings";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
@@ -106,7 +105,7 @@ function App() {
           <Route
             path="/pm-management"
             element={
-              <ProtectedRoute requiredRoles={['Admin', 'Super Admin']}>
+              <ProtectedRoute requiredRoles={['Admin', 'Super Admin', 'Employee']}>
                 <Layout>
                   <PMManagement />
                 </Layout>
@@ -130,17 +129,6 @@ function App() {
               <ProtectedRoute>
                 <Layout>
                   <Reports />
-                </Layout>
-              </ProtectedRoute>
-            }
-          />
-
-          <Route
-            path="/discrepancy"
-            element={
-              <ProtectedRoute>
-                <Layout>
-                  <DiscrepancyReport />
                 </Layout>
               </ProtectedRoute>
             }

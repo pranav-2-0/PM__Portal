@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   Home, Upload, Users, BarChart3, ChevronLeft, ChevronRight,
-  UserCog, Activity, ShieldAlert
+  UserCog, Activity
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../utils/cn';
@@ -10,11 +10,10 @@ import { cn } from '../utils/cn';
 const menuItems = [
   { path: '/',              label: 'Dashboard',          icon: Home },
   { path: '/upload',        label: 'Data Upload',         icon: Upload },
-  { path: '/people',        label: 'People',              icon: Users },
+  { path: '/people',        label: 'All Employees',       icon: Users },
   { path: '/pm-management', label: 'PM Management',       icon: UserCog },
   { path: '/alignment',     label: 'Alignment',           icon: Activity },
   { path: '/reports',       label: 'Reports & Analytics', icon: BarChart3 },
-  { path: '/discrepancy',   label: 'Discrepancy',         icon: ShieldAlert },
 ];
 
 const routeGroups: Record<string, string[]> = {
@@ -36,7 +35,7 @@ export default function Sidebar() {
 
   const { user } = useAuth();
   const filteredMenu = menuItems.filter(item => {
-    if (item.path === '/upload' && (user?.role === 'Employee' || user?.role === 'Staff')) {
+    if (item.path === '/upload' && (user?.role === 'People Manager' || user?.role === 'Employee')) {
       return false;
     }
     return true;

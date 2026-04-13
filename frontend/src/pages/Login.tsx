@@ -1,15 +1,15 @@
-import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
-import { Mail, Lock, AlertCircle, Loader } from "lucide-react";
-import { authService } from "../services/authService";
-import { useAuth } from "../context/AuthContext";
+import { useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { Mail, Lock, AlertCircle, Loader } from 'lucide-react';
+import { authService } from '../services/authService';
+import { useAuth } from '../context/AuthContext';
 
 export default function Login() {
   const navigate = useNavigate();
   const { login } = useAuth();
   const [formData, setFormData] = useState({
-    email: "",
-    password: "",
+    email: '',
+    password: '',
   });
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -31,30 +31,27 @@ export default function Login() {
     try {
       // Validate inputs
       if (!formData.email || !formData.password) {
-        throw new Error("Email and password are required");
+        throw new Error('Email and password are required');
       }
 
       // Call login API
-      const response = await authService.login(
-        formData.email,
-        formData.password,
-      );
+      const response = await authService.login(formData.email, formData.password);
 
       if (response.user) {
         login(response.user);
       }
 
       // Show success message
-      console.log("Login successful:", response);
+      console.log('Login successful:', response);
 
       // Redirect to dashboard
-      navigate("/");
+      navigate('/');
     } catch (err: any) {
-      console.error("Login error:", err);
-
+      console.error('Login error:', err);
+      
       // Better error message handling
-      let errorMessage = "Login failed. Please try again.";
-
+      let errorMessage = 'Login failed. Please try again.';
+      
       if (err.message) {
         errorMessage = err.message;
       } else if (err.response?.data?.message) {
@@ -64,7 +61,7 @@ export default function Login() {
       } else if (err.error) {
         errorMessage = err.error;
       }
-
+      
       setError(errorMessage);
     } finally {
       setLoading(false);
@@ -72,17 +69,15 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-capgemini py-12 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4">
       <div className="w-full max-w-md">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-capgemini-blue rounded-full mb-4">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-full mb-4">
             <Lock className="text-white" size={32} />
           </div>
-          <h1 className="text-3xl font-bold text-capgemini-gray-800">
-            Welcome Back
-          </h1>
-          <p className="text-capgemini-gray-600 mt-2">Login to your account</p>
+          <h1 className="text-3xl font-bold text-gray-800">Welcome Back</h1>
+          <p className="text-gray-600 mt-2">Login to your account</p>
         </div>
 
         {/* Login Card */}
@@ -90,10 +85,7 @@ export default function Login() {
           {/* Error Message */}
           {error && (
             <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-200 rounded-lg">
-              <AlertCircle
-                size={20}
-                className="text-red-600 flex-shrink-0 mt-0.5"
-              />
+              <AlertCircle size={20} className="text-red-600 flex-shrink-0 mt-0.5" />
               <div>
                 <p className="font-semibold text-red-800">Login Error</p>
                 <p className="text-sm text-red-700 mt-1">{error}</p>
@@ -105,10 +97,7 @@ export default function Login() {
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Email Field */}
             <div>
-              <label
-                htmlFor="email"
-                className="block text-sm font-semibold text-gray-700 mb-2"
-              >
+              <label htmlFor="email" className="block text-sm font-semibold text-gray-700 mb-2">
                 Email Address
               </label>
               <div className="relative">
@@ -123,7 +112,7 @@ export default function Login() {
                   value={formData.email}
                   onChange={handleChange}
                   placeholder="your@email.com"
-                  className="input-field pl-10"
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
                   disabled={loading}
                 />
               </div>
@@ -131,10 +120,7 @@ export default function Login() {
 
             {/* Password Field */}
             <div>
-              <label
-                htmlFor="password"
-                className="block text-sm font-semibold text-gray-700 mb-2"
-              >
+              <label htmlFor="password" className="block text-sm font-semibold text-gray-700 mb-2">
                 Password
               </label>
               <div className="relative">
@@ -149,7 +135,7 @@ export default function Login() {
                   value={formData.password}
                   onChange={handleChange}
                   placeholder="Enter your password"
-                  className="input-field pl-10"
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
                   disabled={loading}
                 />
               </div>
@@ -159,7 +145,7 @@ export default function Login() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-gradient-capgemini text-white font-semibold py-2.5 rounded-lg hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold py-2.5 rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {loading ? (
                 <>
@@ -167,7 +153,7 @@ export default function Login() {
                   Logging in...
                 </>
               ) : (
-                "Login"
+                'Login'
               )}
             </button>
           </form>
@@ -182,16 +168,19 @@ export default function Login() {
             </div>
           </div>
 
-          <p className="text-center text-capgemini-gray-600">
-            Don't have an account?{" "}
+          {/* Sign Up Link */}
+          <p className="text-center text-gray-600">
+            Don't have an account?{' '}
             <Link
               to="/signup"
-              className="text-capgemini-blue font-semibold hover:underline"
+              className="text-blue-600 font-semibold hover:underline"
             >
               Sign up here
             </Link>
           </p>
         </div>
+
+       
       </div>
     </div>
   );
