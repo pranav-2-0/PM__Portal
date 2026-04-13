@@ -42,31 +42,43 @@ export default function EmployeesList() {
     setPage(1); // Reset to first page when page size changes
   };
 
-  const exportToCSV = () => {
-    if (filteredEmployees.length === 0) return;
-    
-    const headers = ['Employee ID', 'Name', 'Email', 'Practice', 'CU', 'Region', 'Grade', 'Primary Skill', 'Current PM', 'Status', 'Joining Date'];
-    const rows = filteredEmployees.map(emp => [
-      emp.employee_id,
-      emp.name,
-      emp.email,
-      emp.practice,
-      emp.cu,
-      emp.region,
-      emp.grade,
-      emp.primary_skill || '-',
-      emp.pm_name || 'Unassigned',
-      emp.status,
-      emp.joining_date ? new Date(emp.joining_date).toLocaleDateString() : ''
-    ]);
-    
-    const csvContent = [headers, ...rows].map(row => row.join(',')).join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `employees_${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
+  const [isExporting, setIsExporting] = useState(false);
+
+  const exportToCSV = async () => {
+    try {
+      setIsExporting(true);
+
+      // Build query string from current active filters (same as the list view)
+      const params = new URLSearchParams();
+      if (filters.status)   params.append('status',   filters.status);
+      if (filters.practice) params.append('practice', filters.practice);
+      if (filters.cu)       params.append('cu',       filters.cu);
+      if (filters.region)   params.append('region',   filters.region);
+      // grade & skill are client-side only filters — backend export handles all records
+      // so we omit them here; the exported file will contain all backend-matched rows
+
+      const token = localStorage.getItem('authToken');
+      const res = await fetch(`/api/pm/employees/export?${params.toString()}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+
+      if (!res.ok) throw new Error(`Export failed: ${res.statusText}`);
+
+      const blob = await res.blob();
+      const url  = window.URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = `employees_${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export error:', err);
+      alert('Failed to export employees. Please try again.');
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   if (isLoading) {
@@ -91,10 +103,14 @@ export default function EmployeesList() {
         </div>
         <button
           onClick={exportToCSV}
-          className="flex items-center gap-2 px-4 py-2 bg-[#0070AD] text-white rounded-md hover:bg-[#005a8a] transition-colors"
+          disabled={isExporting}
+          className="flex items-center gap-2 px-4 py-2 bg-[#0070AD] text-white rounded-md hover:bg-[#005a8a] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          <Download className="w-4 h-4" />
-          Export to CSV
+          {isExporting ? (
+            <><Loader2 className="w-4 h-4 animate-spin" /> Exporting...</>
+          ) : (
+            <><Download className="w-4 h-4" /> Export to CSV</>
+          )}
         </button>
       </div>
 

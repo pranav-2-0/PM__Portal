@@ -7707,7 +7707,7 @@ export const getAllEmployees = async (req: Request, res: Response) => {
 // Export employees as CSV
 export const exportAllEmployees = async (req: Request, res: Response) => {
   try {
-    const { status, practice: queryPractice, department_id, cu, region } = req.query;
+    const { status, practice: queryPractice, department_id, cu, region, cols } = req.query;
 
     // Get user's practice; non-Super Admin users are restricted to their practice
     const user = (req as any).user;
@@ -7715,9 +7715,7 @@ export const exportAllEmployees = async (req: Request, res: Response) => {
     const isSuperAdmin = user?.role === 'Super Admin';
 
     // Determine effective practice filter
-    let effectivePractice = userPractice; // Default: user's own practice
-
-    // If Super Admin, check for department_id or practice parameter
+    let effectivePractice = userPractice;
     if (isSuperAdmin) {
       if (department_id) {
         const deptResult = await pool.query(
@@ -7730,12 +7728,34 @@ export const exportAllEmployees = async (req: Request, res: Response) => {
       } else if (queryPractice) {
         effectivePractice = queryPractice as string;
       } else {
-        effectivePractice = ''; // Super Admin with no filter: show all
+        effectivePractice = '';
       }
     }
 
+    // Select all employee fields + all PM fields (same as getAllEmployees list query)
     let query = `
-      SELECT e.*, pm.name as pm_name
+      SELECT
+        e.employee_id, e.name, e.grade, e.practice, e.cu, e.region,
+        e.account, e.skill, e.primary_skill, e.email, e.status,
+        e.joining_date, e.is_new_joiner, e.is_frozen, e.sub_practice,
+        e.location, e.bench_status, e.hire_reason, e.leave_type,
+        e.leave_start_date, e.leave_end_date, e.current_pm_id,
+        pm.name              AS pm_name,
+        pm.email             AS pm_email,
+        pm.grade             AS pm_grade,
+        pm.practice          AS pm_practice,
+        pm.cu                AS pm_cu,
+        pm.region            AS pm_region,
+        pm.account           AS pm_account,
+        pm.skill             AS pm_skill,
+        pm.sub_practice      AS pm_sub_practice,
+        pm.location          AS pm_location,
+        pm.reportee_count    AS pm_reportee_count,
+        pm.max_capacity      AS pm_max_capacity,
+        pm.leave_type        AS pm_leave_type,
+        pm.leave_start_date  AS pm_leave_start_date,
+        pm.leave_end_date    AS pm_leave_end_date,
+        pm.is_active         AS pm_is_active
       FROM employees e
       LEFT JOIN people_managers pm ON e.current_pm_id = pm.employee_id
       WHERE 1=1
@@ -7766,23 +7786,77 @@ export const exportAllEmployees = async (req: Request, res: Response) => {
     }
 
     query += ` ORDER BY e.name ASC`;
-
     const result = await pool.query(query, params);
 
-    const esc = (value: any) => `"${String(value ?? '').replace(/"/g, '""')}"`;
-    const headers = ['Employee ID', 'Name', 'Grade', 'Practice', 'BU', 'Region', 'Account', 'Skill', 'Status', 'PM'];
-    const rows = result.rows.map((e: any) => [
-      e.employee_id,
-      esc(e.name),
-      e.grade || '',
-      e.practice || '',
-      e.cu || '',
-      e.region || '',
-      e.account || '',
-      e.skill || e.primary_skill || '',
-      e.status || 'active',
-      e.pm_name || '',
-    ].join(','));
+    // All possible columns mirroring the UI column picker exactly
+    const ALL_COL_DEFS: { key: string; label: string }[] = [
+      { key: 'employee_id',        label: 'ID' },
+      { key: 'name',               label: 'Name' },
+      { key: 'grade',              label: 'Grade' },
+      { key: 'practice',           label: 'Practice' },
+      { key: 'cu',                 label: 'NEW BU' },
+      { key: 'region',             label: 'Region' },
+      { key: 'account',            label: 'Account' },
+      { key: 'skill',              label: 'Skill' },
+      { key: 'primary_skill',      label: 'Primary Skill' },
+      { key: 'email',              label: 'Email' },
+      { key: 'status',             label: 'Status' },
+      { key: 'current_pm_id',      label: 'PM Assignment' },
+      { key: 'joining_date',       label: 'Joining Date' },
+      { key: 'is_new_joiner',      label: 'New Joiner' },
+      { key: 'is_frozen',          label: 'Frozen' },
+      { key: 'sub_practice',       label: 'Sub Practice' },
+      { key: 'location',           label: 'Location' },
+      { key: 'bench_status',       label: 'Bench Status' },
+      { key: 'hire_reason',        label: 'Hire Reason' },
+      { key: 'leave_type',         label: 'Leave Type' },
+      { key: 'leave_start_date',   label: 'Leave Start' },
+      { key: 'leave_end_date',     label: 'Leave End' },
+      { key: 'pm_name',            label: 'PM Name' },
+      { key: 'pm_email',           label: 'PM Email' },
+      { key: 'pm_grade',           label: 'PM Grade' },
+      { key: 'pm_practice',        label: 'PM Practice' },
+      { key: 'pm_cu',              label: 'PM NEW BU' },
+      { key: 'pm_region',          label: 'PM Region' },
+      { key: 'pm_account',         label: 'PM Account' },
+      { key: 'pm_skill',           label: 'PM Skill' },
+      { key: 'pm_sub_practice',    label: 'PM Sub Practice' },
+      { key: 'pm_location',        label: 'PM Location' },
+      { key: 'pm_reportee_count',  label: 'PM Reportee Count' },
+      { key: 'pm_max_capacity',    label: 'PM Max Capacity' },
+      { key: 'pm_leave_type',      label: 'PM Leave Type' },
+      { key: 'pm_leave_start_date',label: 'PM Leave Start' },
+      { key: 'pm_leave_end_date',  label: 'PM Leave End' },
+      { key: 'pm_is_active',       label: 'PM Active' },
+    ];
+
+    // If caller passed ?cols=employee_id,name,... use those; else export all columns
+    const DEFAULT_COLS = ['employee_id','name','grade','practice','cu','region','account','skill','status','current_pm_id'];
+    const requestedKeys: string[] = cols
+      ? (cols as string).split(',').map(s => s.trim()).filter(Boolean)
+      : DEFAULT_COLS;
+
+    const activeCols = ALL_COL_DEFS.filter(c => requestedKeys.includes(c.key));
+
+    const esc = (value: any) => {
+      const s = String(value ?? '');
+      return s.includes(',') || s.includes('"') || s.includes('\n')
+        ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+
+    const headers = activeCols.map(c => c.label);
+    const rows = result.rows.map((e: any) =>
+      activeCols.map(c => {
+        const v = e[c.key];
+        if (c.key === 'current_pm_id') return v ? 'Assigned' : 'Unassigned';
+        if (c.key === 'is_new_joiner' || c.key === 'is_frozen' || c.key === 'pm_is_active') return v ? 'Yes' : 'No';
+        if (c.key === 'joining_date' || c.key === 'leave_start_date' || c.key === 'leave_end_date' ||
+            c.key === 'pm_leave_start_date' || c.key === 'pm_leave_end_date') {
+          return v ? new Date(v).toLocaleDateString() : '';
+        }
+        return esc(v);
+      }).join(',')
+    );
 
     const csv = [headers.join(','), ...rows].join('\n');
     res.setHeader('Content-Type', 'text/csv');

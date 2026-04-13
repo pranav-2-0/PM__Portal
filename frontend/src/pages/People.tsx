@@ -863,29 +863,45 @@ function EmployeeTable({ benchOnly = false }: { benchOnly?: boolean }) {
 
   const resetCols = () => setVisibleCols(benchOnly ? DEFAULT_COLS_BENCH : DEFAULT_COLS_ALL);
 
-  // CSV export – only exports visible columns, matching the UI exactly
-  const exportToCSV = () => {
-    if (!employees.length) return;
-    const activeCols = ALL_COLUMNS.filter(c => visibleCols.includes(c.key));
-    const headers = activeCols.map(c => c.label);
-    const rows = employees.map((emp: any) =>
-      activeCols.map(c => {
-        const v = emp[c.key];
-        if (c.key === 'current_pm_id') return v ? 'Assigned' : 'Unassigned';
-        if (c.key === 'is_new_joiner' || c.key === 'is_frozen' || c.key === 'pm_is_active') return v ? 'Yes' : 'No';
-        if (v === null || v === undefined) return '';
-        const s = String(v);
-        return s.includes(',') || s.includes('"') ? `"${s.replace(/"/g, '""')}"` : s;
-      }).join(',')
-    );
-    const csv = [headers.join(','), ...rows].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href     = url;
-    a.download = benchOnly ? 'bench_resources.csv' : 'employees.csv';
-    a.click();
-    URL.revokeObjectURL(url);
+  // CSV export – calls backend /employees/export so ALL matching records are downloaded,
+  // not just the current page. Respects the same filters as the list view.
+  const [isExporting, setIsExporting] = useState(false);
+
+  const exportToCSV = async () => {
+    try {
+      setIsExporting(true);
+
+      // Build query params: server-side filters + currently visible columns
+      const params = new URLSearchParams();
+      if (filters.status)   params.append('status',   filters.status);
+      if (filters.practice) params.append('practice', filters.practice);
+      if (filters.cu)       params.append('cu',       filters.cu);
+      if (filters.region)   params.append('region',   filters.region);
+      // Pass the exact columns the user has visible so CSV headers match the UI
+      params.append('cols', visibleCols.join(','));
+
+      const token = localStorage.getItem('authToken');
+      const res = await fetch(`/api/pm/employees/export?${params.toString()}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+
+      if (!res.ok) throw new Error(`Export failed: ${res.statusText}`);
+
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = benchOnly ? 'bench_resources.csv' : 'employees.csv';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export error:', err);
+      alert('Failed to export employees. Please try again.');
+    } finally {
+      setIsExporting(false);
+    }
   };
   // ───────────────────────────────────────────────────────────────────────────
   const [page, setPage]       = useState(1);
@@ -1257,12 +1273,11 @@ function EmployeeTable({ benchOnly = false }: { benchOnly?: boolean }) {
           {/* CSV Export */}
           <button
             onClick={exportToCSV}
-            disabled={employees.length === 0}
+            disabled={isExporting}
             className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm border border-gray-300 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-            title="Export visible columns to CSV"
+            title="Export all matching employees to CSV"
           >
-            <Download size={14} />
-            Export CSV
+            {isExporting ? <><Loader2 size={14} className="animate-spin" /> Exporting...</> : <><Download size={14} /> Export CSV</>}
           </button>
 
           {/* Column Picker */}
