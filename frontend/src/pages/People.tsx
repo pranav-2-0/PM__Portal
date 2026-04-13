@@ -790,7 +790,7 @@ function EmployeeTable({ benchOnly = false }: { benchOnly?: boolean }) {
   const [viewMode, setViewMode] = useState<'list' | 'skill'>('list');
 
   // ── Column picker ──────────────────────────────────────────────────────────
-  type ColKey = 'employee_id'|'name'|'grade'|'practice'|'cu'|'region'|'account'|'skill'|'primary_skill'|'email'|'status'|'current_pm_id'|'joining_date'|'is_new_joiner'|'is_frozen'|'sub_practice'|'location'|'bench_status'|'hire_reason'|'leave_type'|'leave_start_date'|'leave_end_date'|'pm_name'|'pm_email'|'pm_grade'|'pm_practice'|'pm_cu'|'pm_region'|'pm_account'|'pm_skill'|'pm_sub_practice'|'pm_location'|'pm_reportee_count'|'pm_max_capacity'|'pm_leave_type'|'pm_leave_start_date'|'pm_leave_end_date'|'pm_is_active';
+  type ColKey = 'employee_id'|'name'|'grade'|'practice'|'cu'|'region'|'account'|'skill'|'primary_skill'|'new_skill'|'email'|'status'|'current_pm_id'|'joining_date'|'is_new_joiner'|'is_frozen'|'sub_practice'|'location'|'bench_status'|'hire_reason'|'leave_type'|'leave_start_date'|'leave_end_date'|'pm_name'|'pm_email'|'pm_grade'|'pm_practice'|'pm_cu'|'pm_region'|'pm_account'|'pm_skill'|'pm_sub_practice'|'pm_location'|'pm_reportee_count'|'pm_max_capacity'|'pm_leave_type'|'pm_leave_start_date'|'pm_leave_end_date'|'pm_is_active';
   interface ColDef { key: ColKey; label: string; always?: boolean; }
   const ALL_COLUMNS: ColDef[] = [
     { key: 'employee_id',     label: 'ID',               always: true },
@@ -800,8 +800,8 @@ function EmployeeTable({ benchOnly = false }: { benchOnly?: boolean }) {
     { key: 'cu',              label: 'NEW BU' },
     { key: 'region',          label: 'Region' },
     { key: 'account',         label: 'Account' },
-    { key: 'skill',           label: 'Skill' },
     { key: 'primary_skill',   label: 'Primary Skill' },
+    { key: 'new_skill',       label: 'New Skill' },
     { key: 'email',           label: 'Email' },
     { key: 'status',          label: 'Status' },
     { key: 'current_pm_id',   label: 'PM Assignment' },
@@ -833,8 +833,8 @@ function EmployeeTable({ benchOnly = false }: { benchOnly?: boolean }) {
     { key: 'pm_leave_end_date',   label: 'PM Leave End' },
     { key: 'pm_is_active',        label: 'PM Active' },
   ];
-  const DEFAULT_COLS_ALL:   ColKey[] = ['employee_id','name','grade','practice','cu','region','account','skill','status','current_pm_id'];
-  const DEFAULT_COLS_BENCH: ColKey[] = ['employee_id','name','grade','practice','cu','region','skill','bench_status'];
+  const DEFAULT_COLS_ALL:   ColKey[] = ['employee_id','name','grade','practice','cu','region','account','primary_skill','new_skill','status','current_pm_id'];
+  const DEFAULT_COLS_BENCH: ColKey[] = ['employee_id','name','grade','practice','cu','region','primary_skill','new_skill','bench_status'];
   const [visibleCols, setVisibleCols] = useState<ColKey[]>(DEFAULT_COLS_ALL);
   const [showColPicker, setShowColPicker] = useState(false);
   const colPickerRef = React.useRef<HTMLDivElement>(null);
@@ -915,7 +915,7 @@ function EmployeeTable({ benchOnly = false }: { benchOnly?: boolean }) {
     pageSize,
   });
   // Pre-fetch the full dataset in background so skill-wise switch is instant
-  const { data: bulkResponse, isLoading: bulkLoading } = useGetEmployeesListQuery({
+  const { data: bulkResponse, isLoading: bulkLoading, refetch: refetchBulk } = useGetEmployeesListQuery({
     ...filters,
     page: 1,
     pageSize: 10000,
@@ -949,8 +949,10 @@ function EmployeeTable({ benchOnly = false }: { benchOnly?: boolean }) {
   const employees = (activeResponse?.data || []).filter((emp: any) => {
     if (benchOnly && emp.current_pm_id) return false;
     if (filters.grade && !emp.grade?.toLowerCase().includes(filters.grade.toLowerCase())) return false;
-    if (filters.skill && emp.skill &&
-        !emp.skill.toLowerCase().includes(filters.skill.toLowerCase())) return false;
+    if (filters.skill) {
+      const effectiveSkill = String(emp.skill || emp.primary_skill || '').toLowerCase();
+      if (!effectiveSkill.includes(filters.skill.toLowerCase())) return false;
+    }
     return true;
   });
 
@@ -1040,6 +1042,8 @@ function EmployeeTable({ benchOnly = false }: { benchOnly?: boolean }) {
         try { await refetchRemovePreview(); } catch {}
       }
 
+      try { await refetchBulk(); } catch {}
+
       setUpdateSkill('');
       // Close preview & reset filters after success
       setUpdateFilters({ practice: '', cu: '', region: '', grade: '' });
@@ -1097,6 +1101,7 @@ function EmployeeTable({ benchOnly = false }: { benchOnly?: boolean }) {
       }
 
       setRemoveFilters({ skill: '', practice: '', cu: '', region: '', grade: '' });
+      try { await refetchBulk(); } catch {}
       await refetch();
     } catch (err: any) {
       setSkillMsg({ type: 'error', text: getApiErrorMessage(err, 'Remove failed.') });
@@ -1113,6 +1118,7 @@ function EmployeeTable({ benchOnly = false }: { benchOnly?: boolean }) {
       await updateSingleSkill({ employeeId, skill: nextSkill }).unwrap();
       setEditingSkillId(null);
       setSkillMsg({ type: 'success', text: `Skill updated for employee ${employeeId}.` });
+      try { await refetchBulk(); } catch {}
       refetch();
     } catch (err: any) {
       alert(err?.data?.error || 'Failed to update skill.');
@@ -1520,8 +1526,8 @@ function EmployeeTable({ benchOnly = false }: { benchOnly?: boolean }) {
                           <tr>
                             <th className="px-2 py-1 text-left text-gray-600 font-semibold">ID</th>
                             <th className="px-2 py-1 text-left text-gray-600 font-semibold">Name</th>
-                            <th className="px-2 py-1 text-left text-gray-600 font-semibold">Grade</th>
                             <th className="px-2 py-1 text-left text-gray-600 font-semibold">Primary Skill</th>
+                            <th className="px-2 py-1 text-left text-gray-600 font-semibold">New Skill</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1529,10 +1535,8 @@ function EmployeeTable({ benchOnly = false }: { benchOnly?: boolean }) {
                             <tr key={emp.employee_id} className="border-b border-gray-100 hover:bg-blue-50">
                               <td className="px-2 py-1 text-gray-600 font-mono">{emp.employee_id}</td>
                               <td className="px-2 py-1 text-gray-700 font-medium">{emp.name}</td>
-                              <td className="px-2 py-1">
-                                <span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded text-xs">{emp.grade}</span>
-                              </td>
                               <td className="px-2 py-1 text-gray-500">{emp.primary_skill || emp.skill || '—'}</td>
+                              <td className="px-2 py-1 text-blue-700 font-medium">{updateSkill.trim() || '—'}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -1631,7 +1635,7 @@ function EmployeeTable({ benchOnly = false }: { benchOnly?: boolean }) {
                               <th className="px-2 py-1 text-left text-gray-600 font-semibold">ID</th>
                               <th className="px-2 py-1 text-left text-gray-600 font-semibold">Name</th>
                               <th className="px-2 py-1 text-left text-gray-600 font-semibold">Primary Skill</th>
-                              <th className="px-2 py-1 text-left text-gray-600 font-semibold">Updated Skill</th>
+                              <th className="px-2 py-1 text-left text-gray-600 font-semibold">New Skill</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -1773,9 +1777,18 @@ function EmployeeTable({ benchOnly = false }: { benchOnly?: boolean }) {
                           <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-bold">{emp.grade}</span>
                         </td>
                       );
-                      if (col.key === 'skill' || col.key === 'primary_skill') return (
+                      if (col.key === 'primary_skill') return (
                         <td key={col.key} className="px-4 py-3 text-xs">
-                          {editingSkillId === emp.employee_id && col.key === 'skill' ? (
+                          <div className="flex items-center gap-1 group">
+                            {(emp.primary_skill || emp.skill)
+                              ? <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded text-xs">{emp.primary_skill || emp.skill}</span>
+                              : <span className="text-gray-300">—</span>}
+                          </div>
+                        </td>
+                      );
+                      if (col.key === 'new_skill' || col.key === 'skill') return (
+                        <td key={col.key} className="px-4 py-3 text-xs">
+                          {editingSkillId === emp.employee_id ? (
                             <div className="flex items-center gap-1">
                               <input
                                 autoFocus
@@ -1793,10 +1806,10 @@ function EmployeeTable({ benchOnly = false }: { benchOnly?: boolean }) {
                             </div>
                           ) : (
                             <div className="flex items-center gap-1 group">
-                              {(emp[col.key])
-                                ? <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded text-xs">{emp[col.key]}</span>
+                              {(emp.skill && emp.skill !== emp.primary_skill)
+                                ? <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs">{emp.skill}</span>
                                 : <span className="text-gray-300">—</span>}
-                              {col.key === 'skill' && (
+                              {
                                 <button
                                   onClick={() => { setEditingSkillId(emp.employee_id); setEditingSkillValue(emp.skill || emp.primary_skill || ''); }}
                                   className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-blue-600 transition-opacity"
@@ -1804,7 +1817,7 @@ function EmployeeTable({ benchOnly = false }: { benchOnly?: boolean }) {
                                 >
                                   <Pencil size={11} />
                                 </button>
-                              )}
+                              }
                             </div>
                           )}
                         </td>
@@ -1950,8 +1963,8 @@ function EmployeeTable({ benchOnly = false }: { benchOnly?: boolean }) {
                     <thead>
                       <tr className="bg-gray-50 border-b border-gray-200">
                         {(benchOnly
-                          ? ['ID','Name','Grade','Practice','NEW BU','Region','Primary Skill','Bench Status']
-                          : ['ID','Name','Grade','Practice','NEW BU','Region','Account','Primary Skill','Status','PM']
+                          ? ['ID','Name','Grade','Practice','NEW BU','Region','Primary Skill','New Skill','Bench Status']
+                          : ['ID','Name','Grade','Practice','NEW BU','Region','Account','Primary Skill','New Skill','Status','PM']
                         ).map(h => (
                           <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">{h}</th>
                         ))}
@@ -1969,7 +1982,13 @@ function EmployeeTable({ benchOnly = false }: { benchOnly?: boolean }) {
                           <td className="px-4 py-2.5 text-gray-500 text-xs">{emp.cu}</td>
                           <td className="px-4 py-2.5 text-gray-500 text-xs">{emp.region}</td>
                           {!benchOnly && <td className="px-4 py-2.5 text-gray-500 text-xs">{emp.account || '—'}</td>}
-                          {/* Skill (with edit pencil) - shows current effective skill */}
+                          {/* Primary Skill */}
+                          <td className="px-4 py-2.5 text-xs">
+                            {(emp.primary_skill || emp.skill)
+                              ? <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded text-xs">{emp.primary_skill || emp.skill}</span>
+                              : <span className="text-gray-300">—</span>}
+                          </td>
+                          {/* New Skill (editable) */}
                           <td className="px-4 py-2.5 text-xs">
                             {editingSkillId === emp.employee_id ? (
                               <div className="flex items-center gap-1">
@@ -1989,8 +2008,8 @@ function EmployeeTable({ benchOnly = false }: { benchOnly?: boolean }) {
                               </div>
                             ) : (
                               <div className="flex items-center gap-1 group">
-                                {(emp.skill || emp.primary_skill)
-                                  ? <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded text-xs">{emp.skill || emp.primary_skill}</span>
+                                {(emp.skill && emp.skill !== emp.primary_skill)
+                                  ? <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs">{emp.skill}</span>
                                   : <span className="text-gray-300">—</span>}
                                 <button
                                   onClick={() => { setEditingSkillId(emp.employee_id); setEditingSkillValue(emp.skill || emp.primary_skill || ''); }}
@@ -2568,8 +2587,8 @@ export function SkillManagement() {
                       <tr>
                         <th className="px-3 py-1.5 text-left text-gray-600 font-semibold">ID</th>
                         <th className="px-3 py-1.5 text-left text-gray-600 font-semibold">Name</th>
-                        <th className="px-3 py-1.5 text-left text-gray-600 font-semibold">Grade</th>
-                        <th className="px-3 py-1.5 text-left text-gray-600 font-semibold">Current Skill</th>
+                        <th className="px-3 py-1.5 text-left text-gray-600 font-semibold">Primary Skill</th>
+                        <th className="px-3 py-1.5 text-left text-gray-600 font-semibold">New Skill</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -2577,8 +2596,8 @@ export function SkillManagement() {
                         <tr key={emp.employee_id} className="border-b border-gray-100 hover:bg-blue-50">
                           <td className="px-3 py-1.5 text-gray-500 font-mono">{emp.employee_id}</td>
                           <td className="px-3 py-1.5 text-gray-700 font-medium">{emp.name}</td>
-                          <td className="px-3 py-1.5"><span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded text-xs">{emp.grade}</span></td>
-                          <td className="px-3 py-1.5 text-gray-400">{emp.primary_skill || emp.skill || '—'}</td>
+                          <td className="px-3 py-1.5 text-gray-500">{emp.primary_skill || emp.skill || '—'}</td>
+                          <td className="px-3 py-1.5 text-blue-700 font-medium">{updateSkill.trim() || '—'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -2693,7 +2712,7 @@ export function SkillManagement() {
                           <th className="px-3 py-1.5 text-left text-gray-600 font-semibold">ID</th>
                           <th className="px-3 py-1.5 text-left text-gray-600 font-semibold">Name</th>
                           <th className="px-3 py-1.5 text-left text-gray-600 font-semibold">Primary Skill</th>
-                          <th className="px-3 py-1.5 text-left text-gray-600 font-semibold">Updated Skill</th>
+                          <th className="px-3 py-1.5 text-left text-gray-600 font-semibold">New Skill</th>
                         </tr>
                       </thead>
                       <tbody>
