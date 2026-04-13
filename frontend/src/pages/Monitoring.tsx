@@ -910,6 +910,7 @@ export default function Monitoring() {
                               <BarChart2 size={12} />
                               Compare
                             </button>
+
                           </div>
                         </div>
                       </div>
@@ -921,7 +922,7 @@ export default function Monitoring() {
 
             <div className="px-4 py-3 border-t border-slate-200 flex justify-end">
               <button onClick={() => setManualAssignPopup(null)} className="px-5 py-2 border border-gray-300 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors">
-                Cancel
+                Close
               </button>
             </div>
           </div>
@@ -1006,47 +1007,14 @@ export default function Monitoring() {
               </table>
             </div>
 
-            {/* Justification + Assign */}
-            <div className="px-4 pb-4 pt-2 border-t border-slate-200 space-y-3">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                  Justification <span className="text-red-500">*</span>
-                  <span className="ml-2 text-xs font-normal text-gray-500">(recorded in audit trail)</span>
-                </label>
-                <textarea
-                  value={manualAssignJustification}
-                  onChange={e => setManualAssignJustification(e.target.value)}
-                  placeholder="Provide reason for manual PM assignment (e.g. closest available match, practice constraint)..."
-                  rows={2}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:outline-none focus:border-blue-500"
-                />
-              </div>
-
-              {manualAssignStatus && (
-                <div className={`flex items-center gap-2 px-4 py-3 rounded-lg text-sm font-medium ${
-                  manualAssignStatus.success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
-                }`}>
-                  {manualAssignStatus.success ? <CheckCircle size={16} /> : <AlertTriangle size={16} />}
-                  {manualAssignStatus.message}
-                </div>
-              )}
-
-              <div className="flex gap-3">
-                <button
-                  onClick={() => handleManualAssign(manualAssignCompare.suggestedPm.employee_id)}
-                  disabled={!manualAssignJustification.trim() || manualAssignSubmitting}
-                  className="flex-1 py-2.5 text-sm font-semibold text-white rounded-lg transition-all disabled:opacity-50"
-                  style={{ background: 'linear-gradient(135deg, #12ABDB 0%, #0070AD 100%)' }}
-                >
-                  {manualAssignSubmitting ? 'Assigning...' : `Assign ${manualAssignCompare.suggestedPm.name} as PM`}
-                </button>
-                <button
-                  onClick={() => setManualAssignCompare(null)}
-                  className="px-5 py-2.5 border border-gray-300 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  Back
-                </button>
-              </div>
+            {/* Footer — Back only; assign is done from the PM list step */}
+            <div className="px-4 pb-4 pt-2 border-t border-slate-200 flex justify-end">
+              <button
+                onClick={() => setManualAssignCompare(null)}
+                className="px-5 py-2.5 border border-gray-300 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Back
+              </button>
             </div>
           </div>
         </div>
