@@ -256,12 +256,25 @@ export class BulkUploadService {
     try {
       await client.query('BEGIN');
 
+      // ✅ FIX: Deduplicate PMs within batch by employee_id
+      // PostgreSQL ON CONFLICT cannot update the same key twice in a single statement.
+      const dedupMap = new Map<string, PeopleManager>();
+      for (const pm of pms) {
+        dedupMap.set(pm.employee_id, pm);
+      }
+      const uniquePMs = Array.from(dedupMap.values());
+
+      // Log deduplication if any duplicates were found
+      if (uniquePMs.length < pms.length) {
+        console.log(`⚠️  Deduplication: ${pms.length} rows → ${uniquePMs.length} unique PMs (removed ${pms.length - uniquePMs.length} duplicates)`);
+      }
+
       // Build multi-row INSERT for better performance
       const values: any[] = [];
       const placeholders: string[] = [];
       let paramIndex = 1;
 
-      for (const pm of pms) {
+      for (const pm of uniquePMs) {
         const maxCapacity = pm.max_capacity || getMaxCapacityForGrade(pm.grade);
         
         placeholders.push(
@@ -306,7 +319,7 @@ export class BulkUploadService {
       await client.query(query, values);
       await client.query('COMMIT');
       
-      return pms.length;
+      return uniquePMs.length;
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
@@ -323,11 +336,25 @@ export class BulkUploadService {
     try {
       await client.query('BEGIN');
 
+      // ✅ FIX: Deduplicate employees within batch by employee_id
+      // PostgreSQL ON CONFLICT cannot update the same key twice in a single statement.
+      // If the Leave Report file has duplicate employee_ids, keep the last occurrence.
+      const dedupMap = new Map<string, Employee>();
+      for (const emp of employees) {
+        dedupMap.set(emp.employee_id, emp);
+      }
+      const uniqueEmployees = Array.from(dedupMap.values());
+
+      // Log deduplication if any duplicates were found
+      if (uniqueEmployees.length < employees.length) {
+        console.log(`⚠️  Deduplication: ${employees.length} rows → ${uniqueEmployees.length} unique employees (removed ${employees.length - uniqueEmployees.length} duplicates)`);
+      }
+
       const values: any[] = [];
       const placeholders: string[] = [];
       let paramIndex = 1;
 
-      for (const emp of employees) {
+      for (const emp of uniqueEmployees) {
         placeholders.push(
           `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, ` +
           `$${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6}, $${paramIndex + 7}, ` +
@@ -369,7 +396,7 @@ export class BulkUploadService {
           location = COALESCE(EXCLUDED.location, employees.location),
           hire_reason = COALESCE(EXCLUDED.hire_reason, employees.hire_reason),
           bench_status = COALESCE(EXCLUDED.bench_status, employees.bench_status),
-          upload_source = EXCLUDED.upload_source,
+          upload_source = COALESCE(employees.upload_source, EXCLUDED.upload_source),
           leave_type = COALESCE(EXCLUDED.leave_type, employees.leave_type),
           leave_start_date = COALESCE(EXCLUDED.leave_start_date, employees.leave_start_date),
           leave_end_date = COALESCE(EXCLUDED.leave_end_date, employees.leave_end_date),
@@ -382,7 +409,7 @@ export class BulkUploadService {
       // Bench files use "People Manager Email Address" (not PM GGID).
       // For employees where current_pm_id is null but _pm_email is set,
       // look up the PM's employee_id by their email address.
-      const needsEmailResolution = employees.filter(e => !e.current_pm_id && e._pm_email);
+      const needsEmailResolution = uniqueEmployees.filter(e => !e.current_pm_id && e._pm_email);
       if (needsEmailResolution.length > 0) {
         const empIds   = needsEmailResolution.map(e => e.employee_id);
         const pmEmails = needsEmailResolution.map(e => e._pm_email as string);
@@ -400,7 +427,7 @@ export class BulkUploadService {
 
       await client.query('COMMIT');
       
-      return employees.length;
+      return uniqueEmployees.length;
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;

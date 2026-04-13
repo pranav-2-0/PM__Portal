@@ -109,20 +109,28 @@ const upload = multer({
   // Each controller's XLSX/CSV parser throws a clear error for invalid files.
 });
 
+// ✅ Middleware to extend timeout for upload routes (30 minutes)
+// Prevents ERR_CONNECTION_RESET during large file processing
+const extendUploadTimeout = (req: any, res: any, next: any) => {
+  req.setTimeout(30 * 60 * 1000); // 30 minutes for upload routes
+  res.setTimeout(30 * 60 * 1000);
+  next();
+};
+
 // Health check
 router.get('/health/db', checkDatabaseHealth);
 
 // ✅ Apply auth middleware to all routes below
 router.use(authMiddleware);
 
-// Data upload routes
-router.post('/upload/employees', upload.single('file'), uploadEmployees);
-router.post('/upload/new-joiners', upload.single('file'), uploadNewJoiners);
-router.post('/upload/pms', upload.single('file'), uploadPMs);
-router.post('/upload/separations', upload.single('file'), uploadSeparations);
-router.post('/upload/skills', upload.single('file'), uploadSkillReport);
-router.post('/upload/gad', upload.single('file'), uploadGAD);
-router.post('/upload/bench', upload.single('file'), uploadBenchReport);
+// Data upload routes - with extended timeout middleware
+router.post('/upload/employees', extendUploadTimeout, upload.single('file'), uploadEmployees);
+router.post('/upload/new-joiners', extendUploadTimeout, upload.single('file'), uploadNewJoiners);
+router.post('/upload/pms', extendUploadTimeout, upload.single('file'), uploadPMs);
+router.post('/upload/separations', extendUploadTimeout, upload.single('file'), uploadSeparations);
+router.post('/upload/skills', extendUploadTimeout, upload.single('file'), uploadSkillReport);
+router.post('/upload/gad', extendUploadTimeout, upload.single('file'), uploadGAD);
+router.post('/upload/bench', extendUploadTimeout, upload.single('file'), uploadBenchReport);
 
 // PM matching routes
 router.get('/employees/new-joiners', getNewJoiners);

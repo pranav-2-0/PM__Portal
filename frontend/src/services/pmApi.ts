@@ -662,8 +662,11 @@ export const pmApi = createApi({
     getRegionStats: builder.query<any[], void>({
       query: () => '/stats/region-stats',
     }),
-    getUploadStats: builder.query<any, void>({
-      query: () => '/stats/upload-stats',
+    getUploadStats: builder.query<any, { department_id?: number } | void>({
+      query: (params) => ({
+        url: '/stats/upload-stats',
+        params: params && params.department_id ? { department_id: params.department_id } : undefined,
+      }),
     }),
     getEmployeesList: builder.query<{ data: any[]; pagination: { page: number; pageSize: number; totalRecords: number; totalPages: number } }, { status?: string; practice?: string; cu?: string; region?: string; page?: number; pageSize?: number }>({
       query: (params) => ({

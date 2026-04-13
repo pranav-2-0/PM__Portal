@@ -20,7 +20,7 @@
 1. Visit: https://www.postgresql.org/download/windows/
 2. Download PostgreSQL 15.x
 3. Run installer → Select all components
-4. **Set password:** `postgres` (for development)
+4. **Set password:** `root` (for development)
 5. **Port:** `5432` (default)
 6. Finish installation
 

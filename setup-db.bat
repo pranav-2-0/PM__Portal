@@ -27,8 +27,8 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 REM Set PostgreSQL password for this session
-set /p DB_PASSWORD="Enter PostgreSQL password for user 'postgres' [postgres]: "
-if "%DB_PASSWORD%"=="" set DB_PASSWORD=postgres
+set /p DB_PASSWORD="Enter PostgreSQL password for user 'postgres' [root]: "
+if "%DB_PASSWORD%"==\"\" set DB_PASSWORD=root
 
 set PGPASSWORD=%DB_PASSWORD%
 

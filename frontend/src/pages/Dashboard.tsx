@@ -1,18 +1,14 @@
 import { useGetDashboardStatsQuery, useGetPMCapacityReportQuery } from '../services/pmApi';
-import { useAuth } from '../context/AuthContext';
 import { Users, UserCheck, Clock, AlertTriangle } from 'lucide-react';
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 const COLORS = ['#12ABDB', '#0070AD', '#4FC3F7', '#001F5F', '#64748B'];
 
 export default function Dashboard() {
-  const { user, selectedDepartment } = useAuth();
-  const isSuperAdmin = user?.role === 'Super Admin';
-  
-  const dashboardParams = isSuperAdmin && selectedDepartment ? { department_id: selectedDepartment } : undefined;
-  
-  const { data: stats, isLoading: statsLoading } = useGetDashboardStatsQuery(dashboardParams);
-  const { data: capacityReport, isLoading: capacityLoading } = useGetPMCapacityReportQuery(dashboardParams);
+  // Super Admin dashboard should always show stats across all uploaded practices,
+  // independent of the practice selector in the header.
+  const { data: stats, isLoading: statsLoading } = useGetDashboardStatsQuery();
+  const { data: capacityReport, isLoading: capacityLoading } = useGetPMCapacityReportQuery();
 
   if (statsLoading || capacityLoading) {
     return (

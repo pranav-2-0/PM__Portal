@@ -272,7 +272,7 @@ DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=pm_alignment
 DB_USER=postgres
-DB_PASSWORD=postgres
+DB_PASSWORD=root
 MAX_FILE_SIZE=10485760
 UPLOAD_DIR=./uploads
 ```

@@ -7139,19 +7139,26 @@ const detectSameGradeExceptions = async (): Promise<number> => {
       )
   `);
   const result = await pool.query(`
+    WITH to_insert AS (
+      SELECT e.employee_id,
+             'SAME_GRADE_REPORTEE'::text as exception_type,
+             'Employee grade ' || COALESCE(e.grade,'?') || ' equals PM grade ' || COALESCE(pm.grade,'?') as description,
+             'open'::text as status
+      FROM employees e
+      JOIN people_managers pm ON e.current_pm_id = pm.employee_id
+      WHERE e.status = 'active'
+        AND e.grade IS NOT NULL
+        AND pm.grade IS NOT NULL
+        AND e.grade = pm.grade
+    )
     INSERT INTO exceptions (employee_id, exception_type, description, status)
-    SELECT e.employee_id,
-           'SAME_GRADE_REPORTEE',
-           'Employee grade ' || COALESCE(e.grade,'?') || ' equals PM grade ' || COALESCE(pm.grade,'?'),
-           'open'
-    FROM employees e
-    JOIN people_managers pm ON e.current_pm_id = pm.employee_id
-    WHERE e.status = 'active'
-      AND e.grade IS NOT NULL
-      AND pm.grade IS NOT NULL
-      AND e.grade = pm.grade
-    ON CONFLICT (employee_id, exception_type) WHERE status = 'open'
-    DO UPDATE SET description = EXCLUDED.description
+    SELECT * FROM to_insert
+    WHERE NOT EXISTS (
+      SELECT 1 FROM exceptions e
+      WHERE e.employee_id = to_insert.employee_id
+        AND e.exception_type = to_insert.exception_type
+        AND e.status = 'open'
+    )
   `);
   return result.rowCount ?? 0;
 };
@@ -7314,28 +7321,42 @@ export const uploadBenchReport = async (req: Request, res: Response) => {
       : await dataService.bulkInsertEmployees(employees);
 
     // Detect PM_ON_LEAVE: PMs with leave > 30 days
+    // ✅ FIX: PostgreSQL partial unique indexes don't work with ON CONFLICT
+    // Use DELETE-then-INSERT pattern instead (atomic within transaction)
     const longLeaveResult = await pool.query(`
+      WITH to_insert AS (
+        SELECT pm.employee_id,
+               'PM_ON_LEAVE'::text as exception_type,
+               'PM on leave from ' || COALESCE(pm.leave_start_date::text,'?') || ' to ' || COALESCE(pm.leave_end_date::text,'?') as description,
+               'open'::text as status
+        FROM people_managers pm
+        WHERE pm.leave_start_date IS NOT NULL
+          AND pm.leave_end_date IS NOT NULL
+          AND (pm.leave_end_date - pm.leave_start_date) > 30
+      )
       INSERT INTO exceptions (employee_id, exception_type, description, status)
-      SELECT pm.employee_id,
-             'PM_ON_LEAVE',
-             'PM on leave from ' || COALESCE(pm.leave_start_date::text,'?') || ' to ' || COALESCE(pm.leave_end_date::text,'?'),
-             'open'
-      FROM people_managers pm
-      WHERE pm.leave_start_date IS NOT NULL
-        AND pm.leave_end_date IS NOT NULL
-        AND (pm.leave_end_date - pm.leave_start_date) > 30
-      ON CONFLICT (employee_id, exception_type) WHERE status = 'open'
-      DO UPDATE SET description = EXCLUDED.description
+      SELECT * FROM to_insert
+      WHERE NOT EXISTS (
+        SELECT 1 FROM exceptions e
+        WHERE e.employee_id = to_insert.employee_id
+          AND e.exception_type = to_insert.exception_type
+          AND e.status = 'open'
+      )
     `);
 
     await recalcReporteeCounts();
 
     logger.info('Bench upload complete', { employees: result.count ?? result, onLeave: longLeaveResult.rowCount, practice: 'ALL' });
     const discrepancy_summary = await generateDiscrepancySnapshot('bench_upload');
+    
+    // ✅ Simplified response message - only show total employees
+    const employeeCount = result.count ?? result;
+    const onLeaveCount = longLeaveResult.rowCount ?? 0;
+    
     res.json({
-      message: `Bench report processed: ${result.count ?? result} employees`,
-      employees: result.count ?? result,
-      pm_on_leave_exceptions: longLeaveResult.rowCount ?? 0,
+      message: `Leave report upload complete ${employeeCount} employees present in the leave report`,
+      employees: employeeCount,
+      pm_on_leave_exceptions: onLeaveCount,
       practice_filter: null,
       total_in_file: allEmployees.length,
       discrepancy_summary,
@@ -8405,20 +8426,39 @@ export const getUploadStats = async (req: Request, res: Response) => {
     const user = (req as any).user;
     const userPractice = user?.department_name || '';
     const userRole = user?.role || '';
+    const { department_id } = req.query;
     
-    logger.info('getUploadStats called', { userEmail: user?.email, userPractice, userRole, hasUser: !!user });
+    // Determine which practice to use for filtering (same logic as dashboard)
+    let filterPractice = userPractice; // Default: user's own practice
     
-    // Build WHERE clause for practice filtering
-    // Super Admin sees all data, regular users (Admin, Manager, etc) see only their practice data
-    const isPracticeFiltered = userPractice && userRole !== 'Super Admin';
+    // If Super Admin and department_id provided, resolve it to practice name
+    if (user?.role === 'Super Admin' && department_id) {
+      const deptResult = await pool.query(
+        'SELECT name FROM departments WHERE id = $1',
+        [department_id]
+      );
+      if (deptResult.rows.length > 0) {
+        filterPractice = deptResult.rows[0].name;
+      }
+    }
     
-    logger.info('Practice filtering', { isPracticeFiltered, userPractice, userRole });
+    // Same filtering logic as dashboard: Super Admin gets all data if no department_id provided
+    const hasExplicitFilter = (user?.role === 'Super Admin' && department_id) || user?.role !== 'Super Admin';
+    
+    logger.info('getUploadStats called', { 
+      userEmail: user?.email, 
+      userRole: userRole, 
+      filterPractice,
+      department_id,
+      hasExplicitFilter,
+      hasUser: !!user 
+    });
     
     let query: string;
     const params: any[] = [];
     
-    if (isPracticeFiltered) {
-      params.push(userPractice);
+    if (hasExplicitFilter) {
+      params.push(filterPractice);
       query = `
         SELECT 
           (SELECT COUNT(*) FROM employees WHERE status = 'active' AND practice = $1) as "totalEmployees",
@@ -8426,7 +8466,7 @@ export const getUploadStats = async (req: Request, res: Response) => {
           (SELECT COUNT(*) FROM separation_reports sr 
            JOIN people_managers pm ON sr.employee_id = pm.employee_id 
            WHERE sr.lwd >= CURRENT_DATE AND pm.practice = $1) as "pendingSeparations",
-          (SELECT COUNT(*) FROM employees WHERE is_new_joiner = true AND current_pm_id IS NULL AND practice = $1) as "newJoiners",
+          (SELECT COUNT(*) FROM employees WHERE is_new_joiner = true AND current_pm_id IS NULL AND practice = $1 AND upload_source = 'gad') as "newJoiners",
           (SELECT COUNT(*) FROM pm_assignments pa 
            JOIN employees e ON pa.employee_id = e.employee_id 
            WHERE pa.status = 'pending' AND e.practice = $1) as "pendingAssignments",
@@ -8438,7 +8478,7 @@ export const getUploadStats = async (req: Request, res: Response) => {
           (SELECT COUNT(*) FROM employees WHERE status = 'active') as "totalEmployees",
           (SELECT COUNT(*) FROM people_managers WHERE is_active = true) as "activePMs",
           (SELECT COUNT(*) FROM separation_reports WHERE lwd >= CURRENT_DATE) as "pendingSeparations",
-          (SELECT COUNT(*) FROM employees WHERE is_new_joiner = true AND current_pm_id IS NULL) as "newJoiners",
+          (SELECT COUNT(*) FROM employees WHERE is_new_joiner = true AND current_pm_id IS NULL AND upload_source = 'gad') as "newJoiners",
           (SELECT COUNT(*) FROM pm_assignments WHERE status = 'pending') as "pendingAssignments",
           (SELECT COUNT(*) FROM skill_repository) as "skillCount"
       `;
@@ -8446,7 +8486,7 @@ export const getUploadStats = async (req: Request, res: Response) => {
     
     const result = await pool.query(query, params);
     
-    logger.info('Upload stats fetched successfully', { userPractice, role: userRole, resultCount: result.rows.length });
+    logger.info('Upload stats fetched successfully', { filterPractice, role: userRole, department_id, resultCount: result.rows.length });
     res.json(result.rows[0]);
   } catch (error: any) {
     logger.error('Error fetching upload stats', error);

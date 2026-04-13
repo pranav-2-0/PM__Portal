@@ -2,11 +2,15 @@ import React from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useGetUploadStatsQuery, useLazyPreviewAutoGeneratePMsQuery, useConfirmAutoGeneratePMsMutation, useLazyPreviewAutoAssignQuery, useConfirmAutoAssignMutation,
   useUploadEmployeesMutation, useUploadPMsMutation, useUploadNewJoinersMutation, useUploadSeparationsMutation, useUploadSkillReportMutation, useUploadGADMutation, useUploadBenchReportMutation } from '../services/pmApi';
-import { SORTED_PRACTICES } from '../constants/practices';
+import { SORTED_PRACTICES, DEPARTMENT_ID_TO_PRACTICE } from '../constants/practices';
 import { CloudUpload, Loader2, X, Users, UserCog, UserX, ExternalLink, BarChart3, FileSpreadsheet, Clock, BookOpen, Sparkles, Eye, CheckCircle2, ArrowRight, ChevronRight, AlertTriangle } from 'lucide-react';
 
 export const DataUpload: React.FC = () => {
-  const { data: uploadStats, refetch: refetchStats } = useGetUploadStatsQuery();
+  const { user, selectedDepartment } = useAuth();
+  const isSuperAdmin = user?.role === 'Super Admin';
+  const uploadStatsParams = isSuperAdmin && selectedDepartment ? { department_id: selectedDepartment } : undefined;
+  const selectedDepartmentPractice = isSuperAdmin && selectedDepartment ? (DEPARTMENT_ID_TO_PRACTICE[selectedDepartment] || '') : '';
+  const { data: uploadStats, refetch: refetchStats } = useGetUploadStatsQuery(uploadStatsParams);
   const [uploadEmployees] = useUploadEmployeesMutation();
   const [uploadPMs] = useUploadPMsMutation();
   const [uploadNewJoiners] = useUploadNewJoinersMutation();
@@ -14,8 +18,7 @@ export const DataUpload: React.FC = () => {
   const [uploadSkillReport] = useUploadSkillReportMutation();
   const [uploadGAD] = useUploadGADMutation();
   const [uploadBenchReport] = useUploadBenchReportMutation();
-  const { user } = useAuth();
-  const departmentPractice = (user?.department_name || user?.department || '').trim();
+  const departmentPractice = isSuperAdmin ? selectedDepartmentPractice : (user?.department_name || user?.department || '').trim();
 
   // Block unauthorized roles explicitly in component
   if (user?.role === 'Employee' || user?.role === 'Staff') {
@@ -115,7 +118,10 @@ export const DataUpload: React.FC = () => {
       const result = await uploadMutation(formData).unwrap() as any;
       console.log('Upload successful:', result);
       const count = result.count ?? result.employees ?? result.inserted ?? '';
-      setMessage({ type: 'success', text: `${result.message}${count ? ` (${count} records)` : ''}` });
+      
+      // ✅ Simplified message - just show the message as is
+      setMessage({ type: 'success', text: result.message });
+      
       setSelectedFiles(prev => ({ ...prev, [type]: undefined }));
       if (result.discrepancy_summary) setDiscrepancySummary(result.discrepancy_summary);
       if (result.dataset_scope && !result.dataset_scope.is_scoped) {

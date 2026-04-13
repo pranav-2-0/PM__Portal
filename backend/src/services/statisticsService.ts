@@ -7,7 +7,7 @@ export class StatisticsService {
     try {
       const employeeQuery = practice
         ? 'SELECT COUNT(*) as count FROM employees WHERE status = $1 AND practice = $2'
-        : 'SELECT COUNT(*) as count FROM employees WHERE status = $1';
+        : 'SELECT SUM(count) as count FROM (SELECT COUNT(*) as count FROM employees WHERE status = $1 AND practice IN (\'CCA-FS\', \'DCX-FS\') GROUP BY practice) as sub';
       const employeeParams = practice ? ['active', practice] : ['active'];
 
       const pmQuery = practice

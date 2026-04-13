@@ -33,13 +33,29 @@ app.get('/health', (req, res) => {
 
 app.use(errorHandler);
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   ensureExportIndexes();
 
   console.log('Starting workflow automation scheduler...');
   schedulerService.start();
   console.log('Scheduler started successfully');
+});
+
+// ✅ CRITICAL: Set timeouts for large file uploads
+// Default Express timeout is 120s, causing large file (58MB) uploads to fail
+// These settings allow 30 minutes for complete upload + processing
+server.timeout = 30 * 60 * 1000; // 30 minutes socket timeout
+server.keepAliveTimeout = 31 * 60 * 1000; // 31 minutes keep-alive timeout
+server.requestTimeout = 30 * 60 * 1000; // 30 minutes request timeout
+
+// Graceful shutdown on SIGTERM
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received, shutting down gracefully');
+  server.close(() => {
+    console.log('Server closed');
+    process.exit(0);
+  });
 });
 
 export default app;

@@ -81,7 +81,7 @@ DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=pm_alignment
 DB_USER=postgres
-DB_PASSWORD=postgres
+DB_PASSWORD=root
 ```
 
 If password is different, update it!

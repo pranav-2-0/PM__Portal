@@ -5,7 +5,7 @@ const pool = new Pool({
   port: 5432,
   database: 'pm_alignment',
   user: 'postgres',
-  password: 'postgres'
+  password: 'root'
 });
 
 (async () => {
