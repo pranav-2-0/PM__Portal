@@ -7330,10 +7330,10 @@ export const uploadBenchReport = async (req: Request, res: Response) => {
 
     await recalcReporteeCounts();
 
-    logger.info('Bench upload complete', { employees: result.count ?? result, onLeave: longLeaveResult.rowCount, practice: 'ALL' });
+    logger.info('Leave upload complete', { employees: result.count ?? result, onLeave: longLeaveResult.rowCount, practice: 'ALL' });
     const discrepancy_summary = await generateDiscrepancySnapshot('bench_upload');
     res.json({
-      message: `Bench report processed: ${result.count ?? result} employees`,
+      message: `Leave report processed: ${result.count ?? result} employees`,
       employees: result.count ?? result,
       pm_on_leave_exceptions: longLeaveResult.rowCount ?? 0,
       practice_filter: null,
@@ -10298,10 +10298,8 @@ export const getFilteredEmployeesForSkillUpdate = async (req: Request, res: Resp
   try {
     const { practice, cu, region, grade } = req.query as Record<string, string>;
 
-    // Skill-management scope: only New Joiners, and exclude GAD-sourced rows
-    let whereClause = `WHERE status = 'active'
-                       AND is_new_joiner = true
-                       AND COALESCE(upload_source, 'bench') != 'gad'`;
+    // Skill-management scope: all active employees
+    let whereClause = `WHERE status = 'active'`;
     const params: any[] = [];
     let idx = 1;
 
@@ -10309,6 +10307,12 @@ export const getFilteredEmployeesForSkillUpdate = async (req: Request, res: Resp
     if (cu      && cu      !== 'All') { whereClause += ` AND cu = $${idx}`;       params.push(cu);       idx++; }
     if (region  && region  !== 'All') { whereClause += ` AND region = $${idx}`;   params.push(region);   idx++; }
     if (grade)                         { whereClause += ` AND grade = $${idx}`;    params.push(grade);    idx++; }
+
+    const countResult = await pool.query(
+      `SELECT COUNT(*)::int AS total
+       FROM employees ${whereClause}`,
+      params,
+    );
 
     const result = await pool.query(
       `SELECT employee_id,
@@ -10331,7 +10335,7 @@ export const getFilteredEmployeesForSkillUpdate = async (req: Request, res: Resp
 
     res.json({
       data: result.rows,
-      totalCount: result.rows.length,
+      totalCount: countResult.rows[0]?.total || 0,
     });
   } catch (error: any) {
     logger.error('Error fetching filtered employees for skill update', error);
@@ -10358,8 +10362,8 @@ export const getSkillManagementCoverage = async (req: Request, res: Response) =>
       }
     }
 
-    // Skill-management coverage scope: only New Joiners, excluding GAD rows
-    const where = [`status = 'active'`, `is_new_joiner = true`, `COALESCE(upload_source, 'bench') != 'gad'`];
+    // Skill-management coverage scope: all active employees
+    const where = [`status = 'active'`];
     const params: any[] = [];
     if (effectivePractice) {
       params.push(effectivePractice);
@@ -10447,10 +10451,8 @@ export const bulkUpdateEmployeeSkills = async (req: Request, res: Response) => {
       logger.warn('primary_skill backfill skipped', colErr.message);
     }
 
-    // Bulk skill updates are allowed only for New Joiners from non-GAD sources
-    let whereClause = `WHERE status = 'active'
-               AND is_new_joiner = true
-               AND COALESCE(upload_source, 'bench') != 'gad'`;
+    // Bulk skill updates are allowed for all active employees
+    let whereClause = `WHERE status = 'active'`;
     const params: any[] = [skill.trim()];
     let idx = 2;
 
@@ -10519,10 +10521,8 @@ export const removeEmployeeSkill = async (req: Request, res: Response) => {
   try {
     const { skill, practice, cu, region, grade } = req.body as Record<string, string>;
 
-    // Revert only within New Joiner/non-GAD skill-management scope
-    let whereClause = `WHERE status = 'active'
-                       AND is_new_joiner = true
-                       AND COALESCE(upload_source, 'bench') != 'gad'`;
+    // Revert within all active employees scope
+    let whereClause = `WHERE status = 'active'`;
     const params: any[] = [];
     let idx = 1;
 

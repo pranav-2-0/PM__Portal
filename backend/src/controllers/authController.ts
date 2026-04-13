@@ -53,7 +53,10 @@ export const signup = async (req: Request, res: Response) => {
     return res.json({ user, token });
   } catch (err: any) {
     console.error("Signup error:", err);
-    return res.status(400).json({ message: "Signup failed" });
+    if (err.code === '23505') {
+      return res.status(400).json({ message: "Email already registered. Please use a different email or login." });
+    }
+    return res.status(400).json({ message: err.message || "Signup failed" });
   }
 };
 
@@ -110,6 +113,6 @@ export const login = async (req: Request, res: Response) => {
     return res.json({ user: finalUser, token });
   } catch (err: any) {
     console.error("Login error:", err);
-    return res.status(400).json({ message: "Login failed" });
+    return res.status(400).json({ message: err.message || "Login failed" });
   }
 };
