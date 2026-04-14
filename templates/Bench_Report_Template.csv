@@ -1,0 +1,16 @@
+GGID,Email ID,Emp Skills,Unified Grade,PM GGID,PM Sub-practice,SBU Name,PM Region,Joining Date
+40001,alice.johnson@capgemini.com,Java,B2,30001,DCX-BPM,Cloud SBU,IN,2023-05-15
+40002,bob.smith@capgemini.com,Python,B1,30002,Cloud & Infrastructure,Cloud SBU,IN,2022-11-01
+40003,carol.white@capgemini.com,AWS,C1,30003,Data & AI,Tech SBU,US,2021-08-10
+40004,daniel.lee@capgemini.com,Python,B2,30010,Data & AI,Tech SBU,US,2023-11-20
+40005,emma.garcia@capgemini.com,JavaScript,B1,30008,Digital Engineering,Apps SBU,UK,2023-07-01
+40006,frank.miller@capgemini.com,Azure,B2,30006,Cloud & Infrastructure,Cloud SBU,IN,2024-01-15
+40007,grace.davis@capgemini.com,Machine Learning,C1,30007,Data & AI,Tech SBU,US,2022-04-12
+40008,henry.wilson@capgemini.com,React,B1,30008,Digital Engineering,Apps SBU,IN,2023-09-20
+40009,iris.martinez@capgemini.com,DevOps,B2,30009,Cloud & Infrastructure,Tech SBU,UK,2023-09-05
+40010,james.taylor@capgemini.com,SAP,C1,30004,Digital Engineering,Apps SBU,UK,2021-06-30
+40011,karen.anderson@capgemini.com,Kubernetes,B2,30009,Cloud & Infrastructure,Tech SBU,IN,2023-03-14
+40012,leo.thomas@capgemini.com,TensorFlow,C1,30007,Data & AI,Tech SBU,US,2022-09-01
+40013,mia.jackson@capgemini.com,ServiceNow,B2,30005,DCX-BPM,Cloud SBU,IN,2023-08-10
+40014,noah.harris@capgemini.com,Power BI,B1,30010,Data & AI,Tech SBU,US,2024-02-20
+40015,olivia.clark@capgemini.com,React,B2,30008,Digital Engineering,Apps SBU,UK,2023-06-05

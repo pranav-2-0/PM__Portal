@@ -1,0 +1,11 @@
+GGID,Email ID,Emp Skills,Unified Grade,PM GGID,PM Email ID,PM Skills,PM Grade,PM Sub-practice,PM Region,Remarks
+30001,john.manager@capgemini.com,Java,C2,,,,,DCX-BPM,IN,
+30002,sarah.leader@capgemini.com,Python,C1,,,,,Cloud & Infrastructure,IN,
+30003,mike.supervisor@capgemini.com,AWS,D1,,,,,Data & AI,US,
+30004,emma.head@capgemini.com,SAP,C2,,,,,Digital Engineering,UK,
+30005,david.manager@capgemini.com,ServiceNow,D2,,,,,DCX-BPM,IN,
+30006,lisa.lead@capgemini.com,Azure,C1,,,,,Cloud & Infrastructure,IN,
+30007,robert.supervisor@capgemini.com,Machine Learning,D1,,,,,Data & AI,US,
+30008,jennifer.manager@capgemini.com,React,C2,,,,,Digital Engineering,UK,
+30009,william.lead@capgemini.com,DevOps,D3,,,,,Cloud & Infrastructure,IN,
+30010,maria.head@capgemini.com,Data Science,C2,,,,,Data & AI,IN,
