@@ -2,11 +2,15 @@ import React from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useGetUploadStatsQuery, useLazyPreviewAutoGeneratePMsQuery, useConfirmAutoGeneratePMsMutation, useLazyPreviewAutoAssignQuery, useConfirmAutoAssignMutation,
   useUploadEmployeesMutation, useUploadPMsMutation, useUploadNewJoinersMutation, useUploadSeparationsMutation, useUploadSkillReportMutation, useUploadGADMutation, useUploadBenchReportMutation } from '../services/pmApi';
-import { SORTED_PRACTICES } from '../constants/practices';
+import { SORTED_PRACTICES, DEPARTMENT_ID_TO_PRACTICE } from '../constants/practices';
 import { CloudUpload, Loader2, X, Users, UserCog, UserX, ExternalLink, BarChart3, FileSpreadsheet, Clock, BookOpen, Sparkles, Eye, CheckCircle2, ArrowRight, ChevronRight, AlertTriangle } from 'lucide-react';
 
 export const DataUpload: React.FC = () => {
-  const { data: uploadStats, refetch: refetchStats } = useGetUploadStatsQuery();
+  const { user, selectedDepartment } = useAuth();
+  const isSuperAdmin = user?.role === 'Super Admin';
+  const uploadStatsParams = isSuperAdmin && selectedDepartment ? { department_id: selectedDepartment } : undefined;
+  const selectedDepartmentPractice = isSuperAdmin && selectedDepartment ? (DEPARTMENT_ID_TO_PRACTICE[selectedDepartment] || '') : '';
+  const { data: uploadStats, refetch: refetchStats } = useGetUploadStatsQuery(uploadStatsParams);
   const [uploadEmployees] = useUploadEmployeesMutation();
   const [uploadPMs] = useUploadPMsMutation();
   const [uploadNewJoiners] = useUploadNewJoinersMutation();
@@ -14,8 +18,7 @@ export const DataUpload: React.FC = () => {
   const [uploadSkillReport] = useUploadSkillReportMutation();
   const [uploadGAD] = useUploadGADMutation();
   const [uploadBenchReport] = useUploadBenchReportMutation();
-  const { user } = useAuth();
-  const departmentPractice = (user?.department_name || user?.department || '').trim();
+  const departmentPractice = isSuperAdmin ? selectedDepartmentPractice : (user?.department_name || user?.department || '').trim();
 
   // Block unauthorized roles explicitly in component
   if (user?.role === 'Employee' || user?.role === 'Staff') {
@@ -44,7 +47,6 @@ export const DataUpload: React.FC = () => {
   const practiceList = SORTED_PRACTICES;
   const [practiceSelections, setPracticeSelections] = React.useState<Record<string, string>>({
     gad: departmentPractice,
-    bench: departmentPractice,
   });
   
   // State for file selection
@@ -63,7 +65,6 @@ export const DataUpload: React.FC = () => {
       setPracticeSelections(prev => ({
         ...prev,
         gad: departmentPractice,
-        bench: departmentPractice,
       }));
     }
   }, [departmentPractice]);
@@ -108,7 +109,7 @@ export const DataUpload: React.FC = () => {
     setUploadingType(type);
     const formData = new FormData();
     formData.append('file', file);
-    const practice = (type === 'gad' || type === 'bench')
+    const practice = (type === 'gad')
       ? (departmentPractice || (practiceSelections as Record<string, string>)[type] || '')
       : (practiceSelections as Record<string, string>)[type] || '';
     if (practice) formData.append('practice', practice);
@@ -117,7 +118,10 @@ export const DataUpload: React.FC = () => {
       const result = await uploadMutation(formData).unwrap() as any;
       console.log('Upload successful:', result);
       const count = result.count ?? result.employees ?? result.inserted ?? '';
-      setMessage({ type: 'success', text: `${result.message}${count ? ` (${count} records)` : ''}` });
+      
+      // ✅ Simplified message - just show the message as is
+      setMessage({ type: 'success', text: result.message });
+      
       setSelectedFiles(prev => ({ ...prev, [type]: undefined }));
       if (result.discrepancy_summary) setDiscrepancySummary(result.discrepancy_summary);
       if (result.dataset_scope && !result.dataset_scope.is_scoped) {
@@ -505,12 +509,6 @@ export const DataUpload: React.FC = () => {
             </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
-            <a
-              href="/discrepancy"
-              className="px-3 py-1.5 text-xs font-semibold text-white bg-orange-500 hover:bg-orange-600 rounded-lg transition-colors"
-            >
-              View Full Report
-            </a>
             <button onClick={() => setDiscrepancySummary(null)} className="p-1 hover:bg-orange-100 rounded">
               <X className="w-4 h-4 text-orange-500" />
             </button>
@@ -533,15 +531,10 @@ export const DataUpload: React.FC = () => {
           onPracticeChange={(v: string) => setPracticeSelections(prev => ({ ...prev, gad: v }))}
         />
         <UploadCard 
-          title="Bench Report"
-          description="Bench/GTD data — captures Leave Type, Leave Dates, Bench Status for active resources"
+          title="Leave Report"
+          description="Leave data — captures Leave Type, Leave Dates, Bench Status for active resources"
           type="bench"
           loading={uploadingType === 'bench'}
-          requiresPractice={true}
-          lockedPractice={departmentPractice}
-          practiceList={practiceList}
-          selectedPractice={practiceSelections.bench}
-          onPracticeChange={(v: string) => setPracticeSelections(prev => ({ ...prev, bench: v }))}
         />
         <UploadCard 
           title="Skill Report" 
@@ -564,7 +557,7 @@ export const DataUpload: React.FC = () => {
           <div className="flex-1">
             <h3 className="font-semibold text-gray-800 text-lg mb-1">Auto-Generate PM List from Employee Data</h3>
             <p className="text-sm text-gray-600 mb-2">
-              No PM feed file? Automatically promote eligible employees from your uploaded Bench Report as People Managers.
+              No PM feed file? Automatically promote eligible employees from your uploaded Leave Report as People Managers.
             </p>
             <div className="flex flex-wrap gap-2">
               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs bg-purple-100 text-purple-700 font-medium">
@@ -600,7 +593,7 @@ export const DataUpload: React.FC = () => {
 
             {previewData.eligible === 0 ? (
               <p className="text-sm text-gray-500 text-center py-2">
-                No eligible employees found. Upload the Bench Report first, then try again.
+                No eligible employees found. Upload the Leave Report first, then try again.
               </p>
             ) : (
               <div className="space-y-1">
@@ -836,7 +829,7 @@ export const DataUpload: React.FC = () => {
         
         <p className="text-sm font-medium text-gray-800 mb-2">Required Column Headers:</p>
         <ul className="text-xs text-gray-600 space-y-1 list-disc list-inside">
-          <li><strong>Bench Report:</strong> Employee ID / GGID / Global Id, Email ID, Practice, CU, Region, Grade, Skill, Joining Date</li>
+          <li><strong>Leave Report:</strong> Employee ID / GGID / Global Id, Email ID, Practice, CU, Region, Grade, Skill, Joining Date</li>
           <li><strong>People Manager Feed:</strong> GGID / Global Id / PM GGID, Email ID / PM Email ID, Practice, CU, Region, Grade, Skill, Reportee Count</li>
           <li><strong>New Joiner Feed:</strong> Same as Bench Report — flagged automatically as new joiners</li>
           <li><strong>Separation Reports:</strong> Global Id / GGID (PM's ID), LWD / Updated Last Working Date, Reason / Separation Type</li>

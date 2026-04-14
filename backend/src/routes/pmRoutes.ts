@@ -66,9 +66,16 @@ import {
   // Misalignment Detection
   getMisalignments,
   exportMisalignmentsCSV,
+  getUnmappedEmployees,
   getNoSuggestedPMEmployees,
   exportNoSuggestedPMCSV,
-  getUnmappedEmployees,
+  // Skill Management
+  getEmployeeSkillDistribution,
+  bulkUpdateEmployeeSkills,
+  removeEmployeeSkill,
+  updateSingleEmployeeSkill,
+  getSkillManagementCoverage,
+  getFilteredEmployeesForSkillUpdate,
   // Manual Override
   overridePMAssignment,
   getEmployeePMHistory,
@@ -102,20 +109,28 @@ const upload = multer({
   // Each controller's XLSX/CSV parser throws a clear error for invalid files.
 });
 
+// ✅ Middleware to extend timeout for upload routes (30 minutes)
+// Prevents ERR_CONNECTION_RESET during large file processing
+const extendUploadTimeout = (req: any, res: any, next: any) => {
+  req.setTimeout(30 * 60 * 1000); // 30 minutes for upload routes
+  res.setTimeout(30 * 60 * 1000);
+  next();
+};
+
 // Health check
 router.get('/health/db', checkDatabaseHealth);
 
-// Require authentication for all PM routes after health
+// ✅ Apply auth middleware to all routes below
 router.use(authMiddleware);
 
-// Data upload routes
-router.post('/upload/employees', upload.single('file'), uploadEmployees);
-router.post('/upload/new-joiners', upload.single('file'), uploadNewJoiners);
-router.post('/upload/pms', upload.single('file'), uploadPMs);
-router.post('/upload/separations', upload.single('file'), uploadSeparations);
-router.post('/upload/skills', upload.single('file'), uploadSkillReport);
-router.post('/upload/gad', upload.single('file'), uploadGAD);
-router.post('/upload/bench', upload.single('file'), uploadBenchReport);
+// Data upload routes - with extended timeout middleware
+router.post('/upload/employees', extendUploadTimeout, upload.single('file'), uploadEmployees);
+router.post('/upload/new-joiners', extendUploadTimeout, upload.single('file'), uploadNewJoiners);
+router.post('/upload/pms', extendUploadTimeout, upload.single('file'), uploadPMs);
+router.post('/upload/separations', extendUploadTimeout, upload.single('file'), uploadSeparations);
+router.post('/upload/skills', extendUploadTimeout, upload.single('file'), uploadSkillReport);
+router.post('/upload/gad', extendUploadTimeout, upload.single('file'), uploadGAD);
+router.post('/upload/bench', extendUploadTimeout, upload.single('file'), uploadBenchReport);
 
 // PM matching routes
 router.get('/employees/new-joiners', getNewJoiners);
@@ -130,6 +145,7 @@ router.get('/employees/auto-assign/preview', previewAutoAssign);
 router.post('/employees/auto-assign/confirm', confirmAutoAssign);
 router.get('/pms/:pmId/report', getPMDetailReport);
 router.get('/separations/list', getAllSeparations);
+router.get('/employees/:employeeId/suggested-pms', getSuggestedPMsForEmployee);
 router.get('/employees/:employeeId/find-pm', findPMForEmployee);
 router.post('/assignments', assignPMToEmployee);
 router.get('/assignments/pending', getPendingAssignments);
@@ -203,9 +219,9 @@ router.post('/assignments/:assignmentId/reject', async (req, res) => {
   }
 });
 // Phase 3: Workflow Automation Routes
-router.post('/workflows/new-joiner', requireAdmin, triggerNewJoinerWorkflow);
-router.post('/workflows/reassignment', requireAdmin, triggerReassignmentWorkflow);
-router.post('/workflows/monthly-engagement', requireAdmin, triggerMonthlyEngagement);
+router.post('/workflows/new-joiner', triggerNewJoinerWorkflow);
+router.post('/workflows/reassignment', triggerReassignmentWorkflow);
+router.post('/workflows/monthly-engagement', triggerMonthlyEngagement);
 
 // Phase 2: Approval workflow
 router.post('/approvals/:workflowId/approve', approveAssignment);
@@ -224,8 +240,8 @@ router.get('/reports/practice', generatePracticeReport);
 router.get('/reports/filters', getPracticeFilters);
 
 // Configuration: Matching Weights
-router.get('/config/matching-weights', requireAdmin, getMatchingWeights);
-router.put('/config/matching-weights', requireAdmin, updateMatchingWeights);
+router.get('/config/matching-weights', getMatchingWeights);
+router.put('/config/matching-weights', updateMatchingWeights);
 
 // Misalignment Detection
 router.get('/employees/misalignments', getMisalignments);
@@ -249,9 +265,16 @@ router.post('/reports/discrepancy/generate', triggerDiscrepancyReport);
 router.get('/reports/discrepancy/details', getDiscrepancyDetails);
 router.get('/reports/discrepancy/history', getDiscrepancyHistory);
 
+// Skill Management
+router.get('/employees/skills/distribution', getEmployeeSkillDistribution);
+router.get('/employees/skills/coverage', getSkillManagementCoverage);
+router.get('/employees/skills/preview', getFilteredEmployeesForSkillUpdate);
+router.put('/employees/skills/bulk-update', bulkUpdateEmployeeSkills);
+router.post('/employees/skills/remove', removeEmployeeSkill);
+router.patch('/employees/:employeeId/skill', updateSingleEmployeeSkill);
+
 // Manual PM Override
 router.post('/employees/:employeeId/override-pm', overridePMAssignment);
 router.get('/employees/:employeeId/pm-history', getEmployeePMHistory);
-router.get('/employees/:employeeId/suggested-pms', getSuggestedPMsForEmployee);
 
 export default router;

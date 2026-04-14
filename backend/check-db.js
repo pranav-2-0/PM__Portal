@@ -1,5 +1,5 @@
 const { Pool } = require('pg');
-const pool = new Pool({ host: 'localhost', port: 5432, database: 'pm_alignment', user: 'postgres', password: 'postgres' });
+const pool = new Pool({ host: 'localhost', port: 5432, database: 'pm_alignment', user: 'postgres', password: 'root' });
 
 async function check() {
   const sep = await pool.query('SELECT COUNT(*) as cnt FROM separation_reports');
@@ -11,6 +11,9 @@ async function check() {
   console.log('people_managers:', pm.rows[0].cnt);
   console.log('employees:', emp.rows[0].cnt);
   console.log('skill_repository:', skill.rows[0].cnt);
+
+  const practices = await pool.query('SELECT DISTINCT practice FROM employees ORDER BY practice');
+  console.log('\nDistinct practices in employees:', practices.rows.map(r => r.practice));
 
   if (parseInt(sep.rows[0].cnt) > 0) {
     const sample = await pool.query('SELECT * FROM separation_reports LIMIT 3');

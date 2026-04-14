@@ -1,5 +1,5 @@
 import TabBar from '../components/TabBar';
-import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import MonitoringContent from './Monitoring';
 import GADAnalysisContent from './GADAnalysis';
 
@@ -10,9 +10,17 @@ const ALIGN_TABS = [
   { id: 'gad-analysis', label: 'GAD Analysis' },
 ];
 
+const VALID_TABS: TabId[] = ['monitoring', 'gad-analysis'];
 
 export default function Alignment() {
-  const [activeTab, setActiveTab] = useState<TabId>('monitoring');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab') as TabId | null;
+  const activeTab: TabId = tabParam && VALID_TABS.includes(tabParam) ? tabParam : 'monitoring';
+
+  const setActiveTab = (id: TabId) => {
+    setSearchParams({ tab: id }, { replace: true });
+  };
+
   const titles: Record<TabId, { title: string; sub: string }> = {
     monitoring: { title: 'Alignment Monitoring', sub: 'Detect and fix PM misalignments across employees' },
     'gad-analysis': { title: 'GAD Analysis', sub: 'Analyse GAD report data and proposed PM changes' },

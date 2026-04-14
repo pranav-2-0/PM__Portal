@@ -184,7 +184,7 @@ export async function ensureExportIndexes(): Promise<void> {
           )
           AND (ps.employee_id IS NOT NULL OR mhep.practice IS NOT NULL)
       ),
-      -- Full LATERAL scoring — byte-for-byte identical to getMisalignments
+      -- Full LATERAL scoring — identical to getMisalignments strict + relaxed paths
       with_suggestion AS (
         SELECT
           am.*,
@@ -281,8 +281,11 @@ export async function ensureExportIndexes(): Promise<void> {
                      employee_id ASC
             LIMIT 1
           ),
+          -- Relaxed path: full scoring identical to getMisalignments relaxed_scored/relaxed_best
           relaxed_eligible AS (
-            SELECT pm3.employee_id AS suggested_pm_id
+            SELECT pm3.*,
+                   EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - pm3.created_at)) / 86400 AS tenure_days,
+                   COALESCE(gv3.lvl, 0) AS pm_lvl
             FROM people_managers pm3
             JOIN grade_vals gv3 ON gv3.g = UPPER(TRIM(pm3.grade))
             WHERE pm3.is_active    = true
@@ -296,11 +299,40 @@ export async function ensureExportIndexes(): Promise<void> {
               AND pm3.reportee_count < COALESCE(pm3.max_capacity, 15)
               AND am.mismatch_type = 'PM_SEPARATED'
               AND NOT EXISTS (SELECT 1 FROM strict_best)
+          ),
+          relaxed_scored AS (
+            SELECT re.*,
+              CASE WHEN re.practice = am.emp_practice THEN 20 ELSE 0 END AS practice_score,
+              CASE WHEN re.region   = am.emp_region   THEN 20 ELSE 0 END AS region_score,
+              CASE WHEN re.cu       = am.emp_cu        THEN 35 ELSE 0 END AS cu_score,
+              CASE
+                WHEN am.emp_skill IS NULL OR re.skill IS NULL THEN 0
+                WHEN LOWER(TRIM(re.skill)) = LOWER(TRIM(am.emp_skill)) THEN 15
+                WHEN EXISTS (
+                  SELECT 1 FROM skill_clusters sc1r
+                  JOIN skill_clusters sc2r ON sc1r.skill_cluster = sc2r.skill_cluster
+                  WHERE sc1r.skill_name = LOWER(TRIM(re.skill))
+                    AND sc2r.skill_name = LOWER(TRIM(am.emp_skill))
+                    AND sc1r.skill_cluster IS NOT NULL
+                ) THEN 8
+                ELSE 0
+              END AS skill_score,
+              CASE WHEN re.pm_lvl > (SELECT lvl FROM emp_lvl) THEN 5 ELSE 0 END AS grade_score,
+              FLOOR(5.0 * GREATEST(0, COALESCE(re.max_capacity,10) - re.reportee_count)
+                          / COALESCE(re.max_capacity,10)) AS cap_score,
+              1 AS escalation_tier
+            FROM relaxed_eligible re
+          ),
+          relaxed_best AS (
+            SELECT employee_id AS suggested_pm_id
+            FROM relaxed_scored
+            ORDER BY (practice_score + region_score + cu_score + skill_score + grade_score + cap_score) DESC,
+                     reportee_count ASC, tenure_days DESC, employee_id ASC
             LIMIT 1
           )
           SELECT suggested_pm_id FROM strict_best
           UNION ALL
-          SELECT suggested_pm_id FROM relaxed_eligible
+          SELECT suggested_pm_id FROM relaxed_best
           WHERE NOT EXISTS (SELECT 1 FROM strict_best)
           LIMIT 1
         ) sug ON true

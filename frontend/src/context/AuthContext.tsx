@@ -17,9 +17,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<any | null>(
     JSON.parse(localStorage.getItem("user") || "null")
   );
-  const [selectedDepartment, setSelectedDepartment] = useState<number | null>(
-    user?.role === "Super Admin" ? JSON.parse(localStorage.getItem("selectedDepartment") || "null") : null
-  );
+  const [selectedDepartment, setSelectedDepartment] = useState<number | null>(() => {
+    if (user?.role === "Super Admin") {
+      const stored = localStorage.getItem("selectedDepartment");
+      if (stored && stored !== "null") {
+        return JSON.parse(stored);
+      }
+      // Default to first department (CCA-FS = 1) if no stored value
+      return 1;
+    }
+    return null;
+  });
 
   const login = useCallback((userData: any) => {
     setIsAuthenticated(true);

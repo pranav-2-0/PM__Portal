@@ -121,9 +121,7 @@ export default function GADAnalysis() {
   const departmentIdParam = isSuperAdmin && selectedDepartment ? { department_id: selectedDepartment } : {};
 
   const { data: summary, isLoading: summaryLoading, refetch: refetchSummary } = useGetGADAnalysisSummaryQuery(
-    (practiceParam || pmIdParam)
-      ? { practice: practiceParam, pmId: pmIdParam, ...departmentIdParam }
-      : (isSuperAdmin && selectedDepartment ? departmentIdParam : undefined)
+    { practice: practiceParam, pmId: pmIdParam, ...departmentIdParam }
   );
   const { data: correctData,   isLoading: correctLoading   } = useGetCorrectlyMappedEmployeesQuery({ page, pageSize: PAGE_SIZE, practice: practiceParam, pmId: pmIdParam, ...departmentIdParam }, { skip: activeTab !== 'correct' });
   const { data: unmappedData,  isLoading: unmappedLoading  } = useGetUnmappedEmployeesQuery({ page, pageSize: PAGE_SIZE, practice: practiceParam, ...departmentIdParam }, { skip: activeTab !== 'unmapped' });
@@ -177,7 +175,7 @@ export default function GADAnalysis() {
   };
 
   const summaryCards = [
-    { id: 'correct'    as TabType, label: 'Correctly Mapped',  count: summary?.correctly_mapped  ?? '—', sub: 'Valid PM or no better PM exists (§1)',   icon: <CheckCircle size={20}/>,  bg: 'bg-green-50',  text: 'text-green-700',  link: undefined },
+    { id: 'correct'    as TabType, label: 'Correctly Mapped',  count: summary?.correctly_mapped  ?? '—', sub: 'Valid PM or no better PM exists',   icon: <CheckCircle size={20}/>,  bg: 'bg-green-50',  text: 'text-green-700',  link: undefined },
     { id: 'unmapped'   as TabType, label: 'Not Mapped',         count: summary?.not_mapped        ?? '—', sub: 'No PM assigned',                   icon: <UserX size={20}/>,         bg: 'bg-orange-50', text: 'text-orange-700', link: undefined },
     { id: 'same_grade' as TabType, label: 'Same Grade as PM',   count: summary?.same_grade        ?? '—', sub: 'PM must be exactly 1 grade above',  icon: <AlertCircle size={20}/>,   bg: 'bg-yellow-50', text: 'text-yellow-700', link: undefined },
     { id: 'proposed'   as TabType, label: 'Proposed New PMs',   count: summary?.proposed_pms      ?? '—', sub: 'C1+ eligible, ≥1yr tenure',         icon: <UserPlus size={20}/>,      bg: 'bg-blue-50',   text: 'text-blue-700',   link: undefined },
@@ -269,7 +267,7 @@ export default function GADAnalysis() {
       {/* ── Summary Cards ── */}
       {/* ── Incorrectly Mapped redirect banner ── */}
       <div
-        onClick={() => navigate('/monitoring')}
+        onClick={() => navigate('/alignment?tab=monitoring')}
         className="flex items-center justify-between mb-4 px-5 py-3.5 bg-red-50 border-2 border-red-200 rounded-xl cursor-pointer hover:border-red-400 hover:shadow-sm transition-all"
       >
         <div className="flex items-center gap-3">

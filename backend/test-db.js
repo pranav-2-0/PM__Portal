@@ -6,7 +6,7 @@ const pool = new Pool({
   port: parseInt(process.env.DB_PORT || '5432'),
   database: process.env.DB_NAME || 'pm_alignment',
   user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'postgres',
+  password: process.env.DB_PASSWORD || 'root',
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000,
@@ -22,7 +22,7 @@ async function testConnection() {
   console.log(`  Port: ${process.env.DB_PORT || '5432'}`);
   console.log(`  Database: ${process.env.DB_NAME || 'pm_alignment'}`);
   console.log(`  User: ${process.env.DB_USER || 'postgres'}`);
-  console.log(`  Password: ${'*'.repeat((process.env.DB_PASSWORD || 'postgres').length)}\n`);
+  console.log(`  Password: ${'*'.repeat((process.env.DB_PASSWORD || 'root').length)}\n`);
 
   try {
     console.log('Testing connection...');
