@@ -6,7 +6,18 @@ export const store = configureStore({
     [pmApi.reducerPath]: pmApi.reducer,
   },
   middleware: (getDefaultMiddleware) =>
-    getDefaultMiddleware().concat(pmApi.middleware),
+    getDefaultMiddleware({
+      serializableCheck: {
+        ignoredActionPaths: [
+          'meta.arg.originalArgs',
+          'meta.baseQueryMeta',
+        ],
+        ignoredPaths: [
+          'pmApi.mutations',
+          'pmApi.queries',
+        ],
+      },
+    }).concat(pmApi.middleware),
 });
 
 export type RootState = ReturnType<typeof store.getState>;

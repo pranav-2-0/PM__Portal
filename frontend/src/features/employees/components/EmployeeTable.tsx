@@ -2,6 +2,7 @@ import { Users, Filter, Loader2, AlertCircle, Download, ChevronDown, ChevronUp, 
 import Pagination from '../../../components/Pagination';
 import { SkillGroupExport } from './SkillGroupExport';
 import { useViewModeOptimization } from '../hooks/useViewModeOptimization';
+import { useAuth } from '../../../context/AuthContext';
 import {
   useGetEmployeesListQuery,
   useGetPracticeFiltersQuery,
@@ -21,6 +22,9 @@ type ColKey = 'employee_id'|'name'|'grade'|'practice'|'cu'|'region'|'account'|'s
 interface ColDef { key: ColKey; label: string; always?: boolean; }
 
 export function EmployeeTable({ benchOnly = false }: EmployeeTableProps) {
+  const { user, selectedDepartment } = useAuth();
+  const isSuperAdmin = user?.role === 'Super Admin';
+
   const ALL_COLUMNS: ColDef[] = [
     { key: 'employee_id',     label: 'ID',               always: true },
     { key: 'name',            label: 'Name',             always: true },
@@ -98,6 +102,7 @@ export function EmployeeTable({ benchOnly = false }: EmployeeTableProps) {
     ...filters,
     page,
     pageSize,
+    ...(isSuperAdmin && selectedDepartment ? { department_id: selectedDepartment } : {}),
   });
 
   const { data: filterOpts } = useGetPracticeFiltersQuery();
@@ -109,6 +114,7 @@ export function EmployeeTable({ benchOnly = false }: EmployeeTableProps) {
       ...filters,
       page: 1,
       pageSize: 10000,
+      ...(isSuperAdmin && selectedDepartment ? { department_id: selectedDepartment } : {}),
     },
     { skip: viewMode === 'list' } // Only fetch when in skill or update-skills view mode
   );
@@ -356,22 +362,6 @@ export function EmployeeTable({ benchOnly = false }: EmployeeTableProps) {
             </select>
           </div>
         )}
-
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Practice</label>
-          <select
-            value={filters.practice}
-            onChange={e => handleFilterChange('practice', e.target.value)}
-            className={`${selectCls} min-w-[130px]`}
-          >
-            <option value="">All Practices</option>
-            {(filterOpts?.practices || []).map(p => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
-        </div>
 
         <div className="flex gap-2 ml-auto items-center flex-wrap">
           {/* View Mode Toggle Group (List / Skill-wise / Update Skills) */}

@@ -520,6 +520,9 @@ export const pmApi = createApi({
   reducerPath: 'pmApi',
   baseQuery: fetchBaseQuery({ 
     baseUrl: '/api/pm',
+    // ✅ Set a very long timeout for large file uploads (30 minutes)
+    // This prevents the request from timing out during processing of large GAD reports
+    timeout: 30 * 60 * 1000, // 30 minutes in milliseconds
     prepareHeaders: (headers, { endpoint }) => {
       // Add Authorization header with token
       const token = localStorage.getItem('authToken');

@@ -15,6 +15,37 @@ const cleanValue = (v: any): string => {
   return s.startsWith('#') ? '' : s;
 };
 
+const toDateOnly = (date: Date): Date =>
+  new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+// Returns elapsed business days (Mon-Fri) between two dates, excluding weekends.
+// Example: Fri -> Mon = 1 business day.
+const getBusinessDaysDifference = (fromDate: Date, toDate: Date): number => {
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const start = toDateOnly(fromDate);
+  const end = toDateOnly(toDate);
+
+  if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) {
+    return 0;
+  }
+
+  const totalDays = Math.floor((end.getTime() - start.getTime()) / msPerDay);
+  const fullWeeks = Math.floor(totalDays / 7);
+  const remainingDays = totalDays % 7;
+
+  let businessDays = fullWeeks * 5;
+  const startDay = start.getDay(); // 0=Sun ... 6=Sat
+
+  for (let i = 1; i <= remainingDays; i++) {
+    const day = (startDay + i) % 7;
+    if (day !== 0 && day !== 6) {
+      businessDays++;
+    }
+  }
+
+  return businessDays;
+};
+
 // Normalised column names that indicate a sheet contains employee identity data
 const EMPLOYEE_ID_NORMALIZED = new Set([
   normalizeHeader('GGID'), normalizeHeader('CGID'), normalizeHeader('Global Id'),
@@ -825,10 +856,22 @@ export const parseGADExcel = (buffer: Buffer): Employee[] => {
         row['Global Date of Joining'] || row['Date Of Joining'] || row['Joining Date'];
       const joiningDateParsed: Date | undefined = joiningDateVal ? new Date(joiningDateVal) : undefined;
 
+      // ── Global DOJ-based new joiner rule ──
+      // New joiner if business-day difference from Global DOJ to today is <= 150
+      // (Saturday and Sunday excluded).
+      const globalDojVal =
+        row['Global Date of Joining'] || row['Global Date Of Joining'] ||
+        row['Global DOJ'] || row['Date Of Joining'] || row['Joining Date'];
+      const globalDojParsed: Date | undefined = globalDojVal ? new Date(globalDojVal) : undefined;
+      const referenceDoj =
+        globalDojParsed instanceof Date && !isNaN(globalDojParsed.getTime())
+          ? globalDojParsed
+          : (joiningDateParsed instanceof Date && !isNaN(joiningDateParsed.getTime()) ? joiningDateParsed : undefined);
+
       // ── Hire Reason → is_new_joiner ──
       const hireReason = cleanValue(row['Original Hire Reason'] || row['Hire Reason'] || '');
-      const isRecentJoiner = joiningDateParsed instanceof Date && !isNaN(joiningDateParsed.getTime())
-        ? (Date.now() - joiningDateParsed.getTime()) < (90 * 24 * 60 * 60 * 1000)
+      const isRecentJoiner = referenceDoj instanceof Date && !isNaN(referenceDoj.getTime())
+        ? getBusinessDaysDifference(referenceDoj, new Date()) <= 150
         : false;
       const isNewJoiner = hireReason.toLowerCase() === 'new hire' ||
                           row['Is New Joiner'] === 'Yes' || isRecentJoiner;

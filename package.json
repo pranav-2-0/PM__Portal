@@ -3,9 +3,12 @@
   "version": "1.0.0",
   "description": "People Manager Alignment Portal - Root scripts",
   "scripts": {
-    "backend": "cd backend && npm run dev",
-    "frontend": "cd frontend && npm run dev",
+    "backend": "cd backend && node node_modules/ts-node-dev/lib/bin.js --respawn --transpile-only src/server.ts",
+    "frontend": "cd frontend && node node_modules/vite/bin/vite.js",
     "install:all": "cd backend && npm install && cd ../frontend && npm install",
-    "dev": "start cmd /k \"cd backend && npm run dev\" && start cmd /k \"cd frontend && npm run dev\""
+    "dev": "start cmd /k \"cd backend && node node_modules/ts-node-dev/lib/bin.js --respawn --transpile-only src/server.ts\" && start cmd /k \"cd frontend && node node_modules/vite/bin/vite.js\""
+  },
+  "dependencies": {
+    "@types/express": "^5.0.6"
   }
 }

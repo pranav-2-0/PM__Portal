@@ -7,7 +7,7 @@ import Pagination from '../components/Pagination';
 export default function NewJoiners() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
-  const { data: response, isLoading } = useGetNewJoinersListQuery({ page, pageSize });
+  const { data: response, isLoading, error, refetch } = useGetNewJoinersListQuery({ page, pageSize });
   const [findPM] = useFindPMForEmployeeMutation();
   const [assignPM] = useAssignPMMutation();
   const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
@@ -50,6 +50,22 @@ export default function NewJoiners() {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="animate-spin rounded-full h-12 w-12 border-4 border-t-transparent" style={{ borderColor: '#12ABDB', borderTopColor: 'transparent' }}></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    const err = error as any;
+    const status = err?.status;
+    const message = err?.data?.error || err?.error || 'Failed to fetch new joiners';
+
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+        <h2 className="text-red-700 font-semibold">Unable to load New Joiners</h2>
+        <p className="text-red-600 text-sm mt-1">{status ? `(${status}) ` : ''}{message}</p>
+        <button onClick={() => refetch()} className="mt-3 btn-primary text-xs py-1.5 px-3">
+          Retry
+        </button>
       </div>
     );
   }

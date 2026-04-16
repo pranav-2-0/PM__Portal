@@ -7522,7 +7522,6 @@ export const getNewJoiners = async (req: Request, res: Response) => {
        WHERE is_new_joiner = true
          AND current_pm_id IS NULL
          AND is_frozen = false
-         AND (joining_date IS NULL OR joining_date >= CURRENT_DATE - INTERVAL '90 days')
        ORDER BY joining_date DESC`
     );
     res.json(result.rows);
@@ -7571,7 +7570,6 @@ export const getNewJoinersList = async (req: Request, res: Response) => {
         AND current_pm_id IS NULL
         AND is_frozen = false
         AND status = 'active'
-        AND (joining_date IS NULL OR joining_date >= CURRENT_DATE - INTERVAL '90 days')
     `;
     let countQuery = `
       SELECT COUNT(*) FROM employees
@@ -7579,7 +7577,6 @@ export const getNewJoinersList = async (req: Request, res: Response) => {
         AND current_pm_id IS NULL
         AND is_frozen = false
         AND status = 'active'
-        AND (joining_date IS NULL OR joining_date >= CURRENT_DATE - INTERVAL '90 days')
     `;
 
     const params: any[] = [];
