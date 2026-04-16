@@ -2,6 +2,7 @@ import TabBar from '../components/TabBar';
 import { useState, useMemo } from 'react';
 import { useGetPMsListQuery, useGetPracticeFiltersQuery, useGetPMReportSummaryQuery, useGetGradewisePMCapacityQuery } from '../services/pmApi';
 import { useAuth } from '../context/AuthContext';
+import { DEPARTMENT_ID_TO_PRACTICE } from '../constants/practices';
 import {
   FileText, Filter, Download, Loader2, UserCog, Users, AlertTriangle,
   TrendingUp, Calendar, ChevronDown, ChevronUp, Search, RefreshCw, Award,
@@ -41,6 +42,7 @@ type ViewFilter = 'all' | 'allocated' | 'unallocated' | 'incorrect';
 function PMReportTab() {
   const { user, selectedDepartment } = useAuth();
   const isSuperAdmin = user?.role === 'Super Admin';
+  const selectedDepartmentLabel = isSuperAdmin && selectedDepartment ? DEPARTMENT_ID_TO_PRACTICE[selectedDepartment] : null;
   
   const [filters, setFilters] = useState({ is_active: 'true', practice: '', cu: '', region: '', grade: '', skill: '' });
   const [page, setPage] = useState(1);
@@ -95,6 +97,12 @@ function PMReportTab() {
 
   return (
     <div className="space-y-6">
+      {selectedDepartmentLabel && (
+        <div className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">
+          Showing data for department: <span className="ml-2 font-semibold">{selectedDepartmentLabel}</span>
+        </div>
+      )}
+
       <div className="flex items-center justify-end gap-2">
         <button onClick={() => refetch()} className="flex items-center gap-2 px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"><RefreshCw className="w-4 h-4" /> Refresh</button>
         <button onClick={exportCSV} className="flex items-center gap-2 px-4 py-2 text-white rounded-md text-sm" style={{ backgroundColor: '#0070AD' }}><Download className="w-4 h-4" /> Export CSV</button>
@@ -220,6 +228,7 @@ const DRILL_PAGE_SIZE = 25;
 function GradewiseTab() {
   const { user, selectedDepartment } = useAuth();
   const isSuperAdmin = user?.role === 'Super Admin';
+  const selectedDepartmentLabel = isSuperAdmin && selectedDepartment ? DEPARTMENT_ID_TO_PRACTICE[selectedDepartment] : null;
   
   const [selectedGrade, setSelectedGrade] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -303,6 +312,11 @@ function GradewiseTab() {
 
   return (
     <div className="space-y-6">
+      {selectedDepartmentLabel && (
+        <div className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">
+          Showing data for department: <span className="ml-2 font-semibold">{selectedDepartmentLabel}</span>
+        </div>
+      )}
 
       {/* Toolbar */}
       <div className="flex items-center justify-between">

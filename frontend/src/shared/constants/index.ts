@@ -1,0 +1,22 @@
+/**
+ * Shared Constants Index
+ * Centralizes exports for all shared constants
+ */
+
+export {
+  FLAG_COLORS,
+  CONFIDENCE_COLORS,
+  TIER_LABELS,
+  PATH_LABELS,
+  SEPARATION_TYPE_BADGES,
+  PERSON_TYPE_BADGES,
+  GRADE_OPTIONS,
+  PEOPLE_TABS,
+  TAB_TITLES,
+  REPORT_TABS,
+  REPORT_TITLES,
+  VIEW_MODES,
+  DEFAULT_FILTERS,
+  DEFAULT_SKILL_UPDATE_FILTERS,
+  DEFAULT_SKILL_REMOVE_FILTERS,
+} from './matchingConstants';

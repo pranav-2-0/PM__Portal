@@ -1,5 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useGetPMsListQuery, useGetPracticeFiltersQuery, useGetPMReportSummaryQuery } from '../services/pmApi';
+import { useAuth } from '../context/AuthContext';
+import { isSuperAdmin } from '../utils/rbac';
 import {
   FileText, Filter, Download, Loader2, UserCog, Users, AlertTriangle,
   TrendingUp, Calendar, ChevronDown, ChevronUp, Search, RefreshCw, Award,
@@ -29,6 +31,9 @@ const lwdUrgency = (lwd: string) => {
 type ViewFilter = 'all' | 'allocated' | 'unallocated' | 'incorrect';
 
 export default function PMReport() {
+  const { user, selectedDepartment } = useAuth();
+  const isSuperAdminUser = isSuperAdmin(user?.role);
+
   const [filters, setFilters] = useState({
     is_active: 'true', practice: '', cu: '', region: '', grade: '', skill: ''
   });
@@ -49,6 +54,7 @@ export default function PMReport() {
     view_filter: activeView !== 'all' ? activeView : undefined,
     page,
     pageSize,
+    ...(isSuperAdminUser && selectedDepartment ? { department_id: selectedDepartment } : {}),
   });
 
   const { data: filterOptions } = useGetPracticeFiltersQuery();
@@ -59,6 +65,7 @@ export default function PMReport() {
     region:    filters.region,
     grade:     filters.grade,
     skill:     filters.skill,
+    ...(isSuperAdminUser && selectedDepartment ? { department_id: selectedDepartment } : {}),
   });
 
   const pms        = response?.data || [];

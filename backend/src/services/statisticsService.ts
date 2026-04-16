@@ -224,13 +224,38 @@ export class StatisticsService {
       params
     );
 
+    // Build mapping query with same filters
+    const mappingParams: any[] = [];
+    let mappingWhere = 'WHERE e.status = \'active\' AND e.current_pm_id IS NOT NULL';
+
+    if (filters?.practice) {
+      mappingWhere += ` AND pm.practice = $1`;
+      mappingParams.push(filters.practice);
+    }
+    if (filters?.cu) {
+      mappingWhere += ` AND pm.cu = $${mappingParams.length + 1}`;
+      mappingParams.push(filters.cu);
+    }
+    if (filters?.region) {
+      mappingWhere += ` AND pm.region = $${mappingParams.length + 1}`;
+      mappingParams.push(filters.region);
+    }
+    if (filters?.grade) {
+      mappingWhere += ` AND pm.grade ILIKE $${mappingParams.length + 1}`;
+      mappingParams.push(`%${filters.grade}%`);
+    }
+    if (filters?.skill) {
+      mappingWhere += ` AND pm.skill ILIKE $${mappingParams.length + 1}`;
+      mappingParams.push(`%${filters.skill}%`);
+    }
+
     const mappingResult = await pool.query(
       `SELECT e.employee_id, e.practice as emp_practice, e.cu as emp_cu, e.region as emp_region, e.grade as emp_grade,
               pm.employee_id as pm_id, pm.practice as pm_practice, pm.cu as pm_cu, pm.region as pm_region, pm.grade as pm_grade
        FROM employees e
        JOIN people_managers pm ON e.current_pm_id = pm.employee_id
-       WHERE e.status = 'active' AND e.current_pm_id IS NOT NULL`,
-      []
+       ${mappingWhere}`,
+      mappingParams
     );
 
     const incorrectMappings = mappingResult.rows.filter(row => {

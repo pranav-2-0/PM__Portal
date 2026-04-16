@@ -607,13 +607,19 @@ export const pmApi = createApi({
       query: () => '/assignments/pending',
       providesTags: ['Assignments'],
     }),
-    getDashboardStats: builder.query<any, void>({
-      query: () => '/stats/dashboard',
+    getDashboardStats: builder.query<any, { department_id?: number } | undefined>({
+      query: (params) => ({
+        url: '/stats/dashboard',
+        params: params?.department_id ? { department_id: params.department_id } : undefined,
+      }),
     }),
-    getPMCapacityReport: builder.query<any[], void>({
-      query: () => '/stats/pm-capacity',
+    getPMCapacityReport: builder.query<any[], { department_id?: number } | undefined>({
+      query: (params) => ({
+        url: '/stats/pm-capacity',
+        params: params?.department_id ? { department_id: params.department_id } : undefined,
+      }),
     }),
-    getPMReportSummary: builder.query<any, { is_active?: string; practice?: string; cu?: string; region?: string; grade?: string; skill?: string }>({
+    getPMReportSummary: builder.query<any, { is_active?: string; practice?: string; cu?: string; region?: string; grade?: string; skill?: string; department_id?: number }>({
       query: (params) => ({
         url: '/stats/pm-report',
         params,
@@ -913,7 +919,7 @@ export const pmApi = createApi({
       query: (params = {}) => ({ url: '/employees/unmapped', params }),
     }),
     // Gradewise PM Capacity
-    getGradewisePMCapacity: builder.query<any, { grade?: string }>({
+    getGradewisePMCapacity: builder.query<any, { grade?: string; department_id?: number }>({
       query: (params = {}) => ({ url: '/pms/gradewise-capacity', params }),
     }),
     // GAD Analysis Report

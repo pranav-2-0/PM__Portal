@@ -1,14 +1,25 @@
 import { useGetDashboardStatsQuery, useGetPMCapacityReportQuery } from '../services/pmApi';
+import { useAuth } from '../context/AuthContext';
+import { isSuperAdmin } from '../utils/rbac';
+import { DEPARTMENT_ID_TO_PRACTICE } from '../constants/practices';
 import { Users, UserCheck, Clock, AlertTriangle } from 'lucide-react';
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 const COLORS = ['#12ABDB', '#0070AD', '#4FC3F7', '#001F5F', '#64748B'];
 
 export default function Dashboard() {
-  // Super Admin dashboard should always show stats across all uploaded practices,
-  // independent of the practice selector in the header.
-  const { data: stats, isLoading: statsLoading } = useGetDashboardStatsQuery();
-  const { data: capacityReport, isLoading: capacityLoading } = useGetPMCapacityReportQuery();
+  // Super Admin dashboard should reflect the selected department when one is chosen.
+  // If no department is selected, it falls back to the default dashboard scope.
+  const { user, selectedDepartment } = useAuth();
+  const isSuperAdminUser = isSuperAdmin(user?.role);
+  const selectedDepartmentParam = isSuperAdminUser && selectedDepartment ? { department_id: selectedDepartment } : undefined;
+
+  const { data: stats, isLoading: statsLoading } = useGetDashboardStatsQuery(selectedDepartmentParam);
+  const { data: capacityReport, isLoading: capacityLoading } = useGetPMCapacityReportQuery(selectedDepartmentParam);
+
+  const selectedDepartmentLabel = isSuperAdminUser && selectedDepartment ? DEPARTMENT_ID_TO_PRACTICE[selectedDepartment] : null;
+  const hasStatValues = [stats?.totalEmployees, stats?.activePMs, stats?.pendingAssignments, stats?.openExceptions].some((value) => Number(value) > 0);
+  const noDataForSelectedDepartment = !!selectedDepartmentLabel && !hasStatValues && (!capacityReport || capacityReport.length === 0);
 
   if (statsLoading || capacityLoading) {
     return (
@@ -50,6 +61,16 @@ export default function Dashboard() {
       <div>
         <h1 className="text-3xl font-bold text-gray-800">Dashboard</h1>
         <p className="text-gray-600 mt-1">Overview of PM alignment system</p>
+        {selectedDepartmentLabel && (
+          <div className="mt-3 inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">
+            Showing data for department: <span className="ml-2 font-semibold">{selectedDepartmentLabel}</span>
+          </div>
+        )}
+        {noDataForSelectedDepartment && (
+          <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+            No data available for the selected department. Counts are shown as 0 where applicable.
+          </div>
+        )}
       </div>
 
       {/* Stat Cards */}

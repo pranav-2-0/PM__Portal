@@ -8182,9 +8182,31 @@ export const getPMCapacityReport = async (req: Request, res: Response) => {
 
 export const getPMReportSummary = async (req: Request, res: Response) => {
   try {
+    // Get user's practice/department for filtering
+    const user = (req as any).user;
+    const userPractice = user?.department_name || '';
+    const { department_id } = req.query;
+
+    // Determine which practice to use for filtering
+    let filterPractice = userPractice; // Default: user's own practice
+
+    // If Super Admin and department_id provided, resolve it to practice name
+    if (user?.role === 'Super Admin' && department_id) {
+      const deptResult = await pool.query(
+        'SELECT name FROM departments WHERE id = $1',
+        [department_id]
+      );
+      if (deptResult.rows.length > 0) {
+        filterPractice = deptResult.rows[0].name;
+      }
+    }
+
+    // Pass user's practice to stats service; Super Admin gets all data if no department_id provided
+    const hasExplicitFilter = (user?.role === 'Super Admin' && department_id) || user?.role !== 'Super Admin';
+
     const summary = await statsService.getPMReportSummary({
       is_active: req.query.is_active as string,
-      practice: req.query.practice as string,
+      practice: hasExplicitFilter ? filterPractice : undefined,
       cu: req.query.cu as string,
       region: req.query.region as string,
       grade: req.query.grade as string,
@@ -9616,11 +9638,32 @@ export const getUnmappedEmployees = async (req: Request, res: Response) => {
 
 export const getGradewisePMCapacity = async (req: Request, res: Response) => {
   try {
-    const { grade } = req.query;
+    // Get user's practice/department for filtering
+    const user = (req as any).user;
+    const userPractice = user?.department_name || '';
+    const { grade, department_id } = req.query;
+
+    // Determine which practice to use for filtering
+    let filterPractice = userPractice; // Default: user's own practice
+
+    // If Super Admin and department_id provided, resolve it to practice name
+    if (user?.role === 'Super Admin' && department_id) {
+      const deptResult = await pool.query(
+        'SELECT name FROM departments WHERE id = $1',
+        [department_id]
+      );
+      if (deptResult.rows.length > 0) {
+        filterPractice = deptResult.rows[0].name;
+      }
+    }
+
+    // Pass user's practice to query; Super Admin gets all data if no department_id provided
+    const hasExplicitFilter = (user?.role === 'Super Admin' && department_id) || user?.role !== 'Super Admin';
+    const practiceFilter = hasExplicitFilter ? filterPractice : null;
 
     if (grade) {
       // Drill-down: list individual PMs for the given grade (C1+ only)
-      const result = await pool.query(`
+      const query = `
         SELECT
           pm.employee_id, pm.name, pm.email, pm.practice, pm.sub_practice, pm.region, pm.location,
           pm.skill, pm.grade, pm.reportee_count, 10 AS spec_capacity_cap,
@@ -9630,14 +9673,17 @@ export const getGradewisePMCapacity = async (req: Request, res: Response) => {
         WHERE pm.is_active = true
           AND pm.grade = ANY(ARRAY['C1','C2','D1','D2','D3','E1','E2'])
           AND pm.grade = $1
+          ${practiceFilter ? 'AND pm.practice = $2' : ''}
         ORDER BY pm.reportee_count DESC, pm.name
-      `, [grade]);
+      `;
+      const params = practiceFilter ? [grade, practiceFilter] : [grade];
+      const result = await pool.query(query, params);
       return res.json({ grade, pms: result.rows, count: result.rows.length });
     }
 
     // Overall view: grouped by grade (C1+ only)
     const GRADE_ORDER = ['C1','C2','D1','D2','D3','E1','E2'];
-    const result = await pool.query(`
+    const query = `
       SELECT
         pm.grade,
         COUNT(pm.employee_id)::int                                                  AS total_pms,
@@ -9648,8 +9694,11 @@ export const getGradewisePMCapacity = async (req: Request, res: Response) => {
       FROM people_managers pm
       WHERE pm.is_active = true
         AND pm.grade = ANY(ARRAY['C1','C2','D1','D2','D3','E1','E2'])
+        ${practiceFilter ? 'AND pm.practice = $1' : ''}
       GROUP BY pm.grade
-    `);
+    `;
+    const params = practiceFilter ? [practiceFilter] : [];
+    const result = await pool.query(query, params);
 
     // Sort by GRADE_ORDER
     const rows = result.rows.sort((a: any, b: any) => {
