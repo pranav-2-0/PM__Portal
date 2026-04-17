@@ -8405,7 +8405,18 @@ export const getAssignmentTrends = async (req: Request, res: Response) => {
 
 export const getPracticeDistribution = async (req: Request, res: Response) => {
   try {
-    const distribution = await statsService.getPracticeDistribution();
+    const user = (req as any).user;
+    const userPractice = user?.department_name || '';
+    const { department_id } = req.query;
+
+    let filterPractice = userPractice;
+    if (user?.role === 'Super Admin' && department_id) {
+      const deptResult = await pool.query('SELECT name FROM departments WHERE id = $1', [department_id]);
+      if (deptResult.rows.length > 0) filterPractice = deptResult.rows[0].name;
+    }
+
+    const hasExplicitFilter = (user?.role === 'Super Admin' && department_id) || user?.role !== 'Super Admin';
+    const distribution = await statsService.getPracticeDistribution(hasExplicitFilter ? filterPractice : undefined);
     res.json(distribution);
   } catch (error: any) {
     logger.error('Error fetching practice distribution', error);
@@ -8425,7 +8436,18 @@ export const getApprovalMetrics = async (req: Request, res: Response) => {
 
 export const getGradeDistribution = async (req: Request, res: Response) => {
   try {
-    const distribution = await statsService.getGradeDistribution();
+    const user = (req as any).user;
+    const userPractice = user?.department_name || '';
+    const { department_id } = req.query;
+
+    let filterPractice = userPractice;
+    if (user?.role === 'Super Admin' && department_id) {
+      const deptResult = await pool.query('SELECT name FROM departments WHERE id = $1', [department_id]);
+      if (deptResult.rows.length > 0) filterPractice = deptResult.rows[0].name;
+    }
+
+    const hasExplicitFilter = (user?.role === 'Super Admin' && department_id) || user?.role !== 'Super Admin';
+    const distribution = await statsService.getGradeDistribution(hasExplicitFilter ? filterPractice : undefined);
     res.json(distribution);
   } catch (error: any) {
     logger.error('Error fetching grade distribution', error);
@@ -8435,7 +8457,18 @@ export const getGradeDistribution = async (req: Request, res: Response) => {
 
 export const getRegionStats = async (req: Request, res: Response) => {
   try {
-    const stats = await statsService.getRegionStats();
+    const user = (req as any).user;
+    const userPractice = user?.department_name || '';
+    const { department_id } = req.query;
+
+    let filterPractice = userPractice;
+    if (user?.role === 'Super Admin' && department_id) {
+      const deptResult = await pool.query('SELECT name FROM departments WHERE id = $1', [department_id]);
+      if (deptResult.rows.length > 0) filterPractice = deptResult.rows[0].name;
+    }
+
+    const hasExplicitFilter = (user?.role === 'Super Admin' && department_id) || user?.role !== 'Super Admin';
+    const stats = await statsService.getRegionStats(hasExplicitFilter ? filterPractice : undefined);
     res.json(stats);
   } catch (error: any) {
     logger.error('Error fetching region stats', error);
@@ -8570,7 +8603,18 @@ export const getExceptionQueue = async (req: Request, res: Response) => {
 
 export const getPMCapacityHeatmap = async (req: Request, res: Response) => {
   try {
-    const heatmap = await statsService.getPMCapacityHeatmap();
+    const user = (req as any).user;
+    const userPractice = user?.department_name || '';
+    const { department_id } = req.query;
+
+    let filterPractice = userPractice;
+    if (user?.role === 'Super Admin' && department_id) {
+      const deptResult = await pool.query('SELECT name FROM departments WHERE id = $1', [department_id]);
+      if (deptResult.rows.length > 0) filterPractice = deptResult.rows[0].name;
+    }
+
+    const hasExplicitFilter = (user?.role === 'Super Admin' && department_id) || user?.role !== 'Super Admin';
+    const heatmap = await statsService.getPMCapacityHeatmap(hasExplicitFilter ? filterPractice : undefined);
     res.json(heatmap);
   } catch (error: any) {
     logger.error('Error fetching PM capacity heatmap', error);

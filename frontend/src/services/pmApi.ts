@@ -659,17 +659,26 @@ export const pmApi = createApi({
     getAssignmentTrends: builder.query<any[], void>({
       query: () => '/stats/assignment-trends',
     }),
-    getPracticeDistribution: builder.query<any[], void>({
-      query: () => '/stats/practice-distribution',
+    getPracticeDistribution: builder.query<any[], { department_id?: number } | undefined>({
+      query: (params) => ({
+        url: '/stats/practice-distribution',
+        params: params?.department_id ? { department_id: params.department_id } : undefined,
+      }),
     }),
     getApprovalMetrics: builder.query<any, void>({
       query: () => '/stats/approval-metrics',
     }),
-    getGradeDistribution: builder.query<any[], void>({
-      query: () => '/stats/grade-distribution',
+    getGradeDistribution: builder.query<any[], { department_id?: number } | undefined>({
+      query: (params) => ({
+        url: '/stats/grade-distribution',
+        params: params?.department_id ? { department_id: params.department_id } : undefined,
+      }),
     }),
-    getRegionStats: builder.query<any[], void>({
-      query: () => '/stats/region-stats',
+    getRegionStats: builder.query<any[], { department_id?: number } | undefined>({
+      query: (params) => ({
+        url: '/stats/region-stats',
+        params: params?.department_id ? { department_id: params.department_id } : undefined,
+      }),
     }),
     getUploadStats: builder.query<any, { department_id?: number } | void>({
       query: (params) => ({
@@ -714,8 +723,11 @@ export const pmApi = createApi({
     getExceptionQueue: builder.query<any[], void>({
       query: () => '/analytics/exception-queue',
     }),
-    getPMCapacityHeatmap: builder.query<any[], void>({
-      query: () => '/analytics/pm-capacity-heatmap',
+    getPMCapacityHeatmap: builder.query<any[], { department_id?: number } | undefined>({
+      query: (params) => ({
+        url: '/analytics/pm-capacity-heatmap',
+        params: params?.department_id ? { department_id: params.department_id } : undefined,
+      }),
     }),
     getAssignmentStatus: builder.query<any, void>({
       query: () => '/analytics/assignment-status',

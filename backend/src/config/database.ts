@@ -8,7 +8,7 @@ const pool = new Pool({
   port: parseInt(process.env.DB_PORT || '5432'),
   database: process.env.DB_NAME || 'pm_alignment',
   user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'test1234',
+  password: process.env.DB_PASSWORD || 'postgres',
   max: 50,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000,
