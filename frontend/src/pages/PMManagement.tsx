@@ -44,7 +44,7 @@ function PMReportTab() {
   const isSuperAdmin = user?.role === 'Super Admin';
   const selectedDepartmentLabel = isSuperAdmin && selectedDepartment ? DEPARTMENT_ID_TO_PRACTICE[selectedDepartment] : null;
   
-  const [filters, setFilters] = useState({ is_active: 'true', practice: '', cu: '', region: '', grade: '', skill: '' });
+  const [filters, setFilters] = useState({ is_active: 'true', cu: '', region: '', grade: '', skill: '', search: '' });
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [selectedPM, setSelectedPM] = useState<{ id: string; name: string } | null>(null);
@@ -123,9 +123,8 @@ function PMReportTab() {
           <div><label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
             <select value={filters.is_active} onChange={e => setFilter('is_active', e.target.value)} className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#0070AD]">
               <option value="true">Active</option><option value="false">Inactive</option><option value="">All</option></select></div>
-          <div><label className="block text-xs font-medium text-gray-600 mb-1">Practice</label>
-            <select value={filters.practice} onChange={e => setFilter('practice', e.target.value)} className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#0070AD]">
-              <option value="">All Practices</option>{filterOptions?.practices?.filter((p: string) => p !== 'All').map((p: string) => <option key={p} value={p}>{p}</option>)}</select></div>
+          <div><label className="block text-xs font-medium text-gray-600 mb-1">Search Name / ID</label>
+            <div className="relative"><Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" /><input type="text" value={filters.search} onChange={e => setFilter('search', e.target.value)} placeholder="Name or ID..." className="w-full pl-6 pr-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#0070AD]" /></div></div>
           <div><label className="block text-xs font-medium text-gray-600 mb-1">CU</label>
             <select value={filters.cu} onChange={e => setFilter('cu', e.target.value)} className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#0070AD]">
               <option value="">All CUs</option>{filterOptions?.cus?.filter((c: string) => c !== 'All').map((c: string) => <option key={c} value={c}>{c}</option>)}</select></div>

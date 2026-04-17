@@ -686,14 +686,14 @@ export const pmApi = createApi({
         params: params && params.department_id ? { department_id: params.department_id } : undefined,
       }),
     }),
-    getEmployeesList: builder.query<{ data: any[]; pagination: { page: number; pageSize: number; totalRecords: number; totalPages: number } }, { status?: string; practice?: string; cu?: string; region?: string; page?: number; pageSize?: number }>({
+    getEmployeesList: builder.query<{ data: any[]; pagination: { page: number; pageSize: number; totalRecords: number; totalPages: number } }, { status?: string; practice?: string; cu?: string; region?: string; search?: string; grade?: string; skill?: string; page?: number; pageSize?: number; department_id?: number }>({
       query: (params) => ({
         url: '/employees/list',
         params,
       }),
       keepUnusedDataFor: 300,
     }),
-    getPMsList: builder.query<{ data: any[]; pagination: { page: number; pageSize: number; totalRecords: number; totalPages: number } }, { is_active?: string; practice?: string; cu?: string; region?: string; grade?: string; skill?: string; view_filter?: string; page?: number; pageSize?: number }>({
+    getPMsList: builder.query<{ data: any[]; pagination: { page: number; pageSize: number; totalRecords: number; totalPages: number } }, { is_active?: string; practice?: string; cu?: string; region?: string; grade?: string; skill?: string; search?: string; view_filter?: string; page?: number; pageSize?: number; department_id?: number }>({
       query: (params) => ({
         url: '/pms/list',
         params,

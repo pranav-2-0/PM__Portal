@@ -7626,7 +7626,7 @@ export const getNewJoinersList = async (req: Request, res: Response) => {
 // Get all employees (Bench/GAD list)
 export const getAllEmployees = async (req: Request, res: Response) => {
   try {
-    const { status, practice: queryPractice, department_id, cu, region, page = '1', pageSize = '50' } = req.query;
+    const { status, practice: queryPractice, department_id, cu, region, grade, skill, search, page = '1', pageSize = '50' } = req.query;
     const pageNum = parseInt(page as string);
     const pageSizeNum = parseInt(pageSize as string);
     const offset = (pageNum - 1) * pageSizeNum;
@@ -7701,6 +7701,24 @@ export const getAllEmployees = async (req: Request, res: Response) => {
       query += ` AND e.region = $${paramIndex}`;
       countQuery += ` AND e.region = $${paramIndex}`;
       params.push(region);
+      paramIndex++;
+    }
+    if (grade) {
+      query += ` AND e.grade ILIKE $${paramIndex}`;
+      countQuery += ` AND e.grade ILIKE $${paramIndex}`;
+      params.push(`%${grade}%`);
+      paramIndex++;
+    }
+    if (skill) {
+      query += ` AND (e.skill ILIKE $${paramIndex} OR e.primary_skill ILIKE $${paramIndex})`;
+      countQuery += ` AND (e.skill ILIKE $${paramIndex} OR e.primary_skill ILIKE $${paramIndex})`;
+      params.push(`%${skill}%`);
+      paramIndex++;
+    }
+    if (search) {
+      query += ` AND (e.name ILIKE $${paramIndex} OR e.employee_id ILIKE $${paramIndex})`;
+      countQuery += ` AND (e.name ILIKE $${paramIndex} OR e.employee_id ILIKE $${paramIndex})`;
+      params.push(`%${search}%`);
       paramIndex++;
     }
 
@@ -7820,7 +7838,7 @@ export const exportAllEmployees = async (req: Request, res: Response) => {
 // Get all PMs list
 export const getAllPMs = async (req: Request, res: Response) => {
   try {
-    const { is_active, practice: queryPractice, department_id, cu, region, grade, skill, view_filter, page = '1', pageSize = '50' } = req.query;
+    const { is_active, practice: queryPractice, department_id, cu, region, grade, skill, search, view_filter, page = '1', pageSize = '50' } = req.query;
     const pageNum = parseInt(page as string);
     const pageSizeNum = parseInt(pageSize as string);
     const offset = (pageNum - 1) * pageSizeNum;
@@ -7897,6 +7915,12 @@ export const getAllPMs = async (req: Request, res: Response) => {
       query += ` AND pm.skill ILIKE $${paramIndex}`;
       countQuery += ` AND pm.skill ILIKE $${paramIndex}`;
       params.push(`%${skill}%`);
+      paramIndex++;
+    }
+    if (search) {
+      query += ` AND (pm.name ILIKE $${paramIndex} OR pm.employee_id ILIKE $${paramIndex})`;
+      countQuery += ` AND (pm.name ILIKE $${paramIndex} OR pm.employee_id ILIKE $${paramIndex})`;
+      params.push(`%${search}%`);
       paramIndex++;
     }
 

@@ -75,6 +75,7 @@ export function EmployeeTable({ benchOnly = false }: EmployeeTableProps) {
     region: '',
     grade: '',
     skill: '',
+    search: '',
   });
   const [visibleCols, setVisibleCols] = useState<ColKey[]>(DEFAULT_COLS_ALL);
   const [showColPicker, setShowColPicker] = useState(false);
@@ -420,23 +421,92 @@ export function EmployeeTable({ benchOnly = false }: EmployeeTableProps) {
       )}
 
       {/* Filters */}
-      <div className="bg-white rounded-lg shadow-sm p-4 flex flex-wrap gap-3 items-end">
-        {!benchOnly && (
+      <div className="bg-white rounded-lg shadow-sm p-4 space-y-3">
+        <div className="flex flex-wrap gap-3 items-end">
+          {!benchOnly && (
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
+              <select
+                value={filters.status}
+                onChange={e => handleFilterChange('status', e.target.value)}
+                className={selectCls}
+              >
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+                <option value="">All</option>
+              </select>
+            </div>
+          )}
+
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1">CU</label>
             <select
-              value={filters.status}
-              onChange={e => handleFilterChange('status', e.target.value)}
-              className={selectCls}
+              value={filters.cu}
+              onChange={e => handleFilterChange('cu', e.target.value)}
+              className={`${selectCls} min-w-[130px]`}
             >
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-              <option value="">All</option>
+              <option value="">All CUs</option>
+              {(filterOpts?.cus || []).filter((c: string) => c !== 'All').map((c: string) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
             </select>
           </div>
-        )}
 
-        <div className="flex gap-2 ml-auto items-center flex-wrap">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Grade</label>
+            <input
+              type="text"
+              value={filters.grade}
+              onChange={e => handleFilterChange('grade', e.target.value)}
+              placeholder="e.g. D1, C2"
+              className={`${selectCls} w-28`}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Skill</label>
+            <div className="relative">
+              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={filters.skill}
+                onChange={e => handleFilterChange('skill', e.target.value)}
+                placeholder="Search skill..."
+                className={`${selectCls} pl-7 min-w-[150px]`}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Region</label>
+            <select
+              value={filters.region}
+              onChange={e => handleFilterChange('region', e.target.value)}
+              className={`${selectCls} min-w-[120px]`}
+            >
+              <option value="">All Regions</option>
+              {(filterOpts?.regions || []).filter((r: string) => r !== 'All').map((r: string) => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Search Name / ID</label>
+            <div className="relative">
+              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={filters.search}
+                onChange={e => handleFilterChange('search', e.target.value)}
+                placeholder="Name or ID..."
+                className={`${selectCls} pl-7 min-w-[160px]`}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-2 ml-auto items-center flex-wrap justify-end">
           {/* View Mode Toggle Group (List / Skill-wise / Update Skills) */}
           <div className="flex border border-gray-300 rounded-lg overflow-hidden shadow-sm bg-white">
             <button

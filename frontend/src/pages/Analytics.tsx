@@ -25,12 +25,7 @@ import {
   Users,
   UserCheck,
   AlertTriangle,
-  Activity,
-  Globe,
-  Award,
   Zap,
-  Layers,
-  Target,
   BarChart2,
   ChevronDown,
   ChevronUp,
@@ -174,7 +169,6 @@ export default function Analytics() {
   const totalEmployees = dashStats?.totalEmployees || 0;
   const totalPMs = dashStats?.totalPMs || 0;
   const newJoiners = dashStats?.newJoinersWithoutPM || 0;
-  const pendingAssignments = dashStats?.pendingAssignments || 0;
   const avgReporteeCount = pmCapacity?.length
     ? (
         pmCapacity.reduce(
@@ -275,42 +269,6 @@ export default function Analytics() {
           value={overloadedPMs.toLocaleString()}
           sub="At ≥90% utilization"
           color="#EF4444"
-        />
-      </div>
-
-      {/* KPI Cards Row 2 */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <KPICard
-          icon={Activity}
-          title="Pending Assignments"
-          value={pendingAssignments.toLocaleString()}
-          sub="Awaiting processing"
-          color="#8B5CF6"
-        />
-        <KPICard
-          icon={Layers}
-          title="Active Practices"
-          value={practiceChartData.length}
-          sub="Distinct practices"
-          color="#06B6D4"
-        />
-        <KPICard
-          icon={Globe}
-          title="Regions Covered"
-          value={regionChartData.length}
-          sub="Distinct regions"
-          color="#10B981"
-        />
-        <KPICard
-          icon={Target}
-          title="PM Coverage"
-          value={
-            totalEmployees > 0
-              ? `${(((totalEmployees - newJoiners) / totalEmployees) * 100).toFixed(1)}%`
-              : "0%"
-          }
-          sub="Employees with PM"
-          color="#12ABDB"
         />
       </div>
 
@@ -548,106 +506,6 @@ export default function Analytics() {
         ) : (
           <EmptyChart message="PM capacity data not available" />
         )}
-      </Section>
-
-      {/* Exception & Risk Analysis */}
-      <Section title="🚨 Exception & Risk Analysis" collapsible>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-red-50 border border-red-100 rounded-lg p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <AlertTriangle size={16} className="text-red-500" />
-              <span className="font-semibold text-red-700 text-sm">
-                High-Risk PM Clusters
-              </span>
-            </div>
-            {(pmCapacity || []).filter((p: any) => Number(p.utilization) >= 90)
-              .length > 0 ? (
-              <div className="space-y-1">
-                {(pmCapacity || [])
-                  .filter((p: any) => Number(p.utilization) >= 90)
-                  .slice(0, 5)
-                  .map((pm: any, i: number) => (
-                    <div key={i} className="flex justify-between text-xs">
-                      <span className="text-gray-700 truncate max-w-32">
-                        {pm.name}
-                      </span>
-                      <span className="font-bold text-red-600">
-                        {Number(pm.utilization).toFixed(0)}%
-                      </span>
-                    </div>
-                  ))}
-              </div>
-            ) : (
-              <p className="text-xs text-green-600 font-medium">
-                ✓ No overloaded PMs detected
-              </p>
-            )}
-          </div>
-
-          <div className="bg-amber-50 border border-amber-100 rounded-lg p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Globe size={16} className="text-amber-500" />
-              <span className="font-semibold text-amber-700 text-sm">
-                Unassigned by Region
-              </span>
-            </div>
-            {regionChartData.filter((r: any) => r.withoutPM > 0).length > 0 ? (
-              <div className="space-y-1">
-                {regionChartData
-                  .filter((r: any) => r.withoutPM > 0)
-                  .sort((a: any, b: any) => b.withoutPM - a.withoutPM)
-                  .slice(0, 5)
-                  .map((r: any, i: number) => (
-                    <div key={i} className="flex justify-between text-xs">
-                      <span className="text-gray-700 truncate max-w-32">
-                        {r.name}
-                      </span>
-                      <span className="font-bold text-amber-700">
-                        {r.withoutPM} unassigned
-                      </span>
-                    </div>
-                  ))}
-              </div>
-            ) : (
-              <p className="text-xs text-green-600 font-medium">
-                ✓ All regions fully covered
-              </p>
-            )}
-          </div>
-
-          <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Award size={16} className="text-blue-500" />
-              <span className="font-semibold text-blue-700 text-sm">
-                Top 5 Grades by Count
-              </span>
-            </div>
-            <div className="space-y-1">
-              {gradeChartData
-                .sort((a: any, b: any) => b.count - a.count)
-                .slice(0, 5)
-                .map((g: any, i: number) => (
-                  <div
-                    key={i}
-                    className="flex justify-between items-center text-xs"
-                  >
-                    <span className="text-gray-700">{g.name}</span>
-                    <div className="flex items-center gap-1">
-                      <div
-                        className="bg-blue-200 h-1.5 rounded-full"
-                        style={{
-                          width: `${Math.min((g.count / (gradeChartData[0]?.count || 1)) * 40, 40)}px`,
-                        }}
-                      />
-                      <span className="font-bold text-blue-700 w-12 text-right">
-                        {g.count.toLocaleString()}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-            </div>
-          </div>
-        </div>
       </Section>
 
       {/* Practice-Level PM Alignment */}
