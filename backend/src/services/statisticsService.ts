@@ -332,7 +332,14 @@ export class StatisticsService {
    * Phase 5: PM Capacity Heatmap Data
    * Provide data for visual capacity heatmap
    */
-  async getPMCapacityHeatmap() {
+  async getPMCapacityHeatmap(practice?: string) {
+    const params: any[] = [];
+    let whereClause = 'WHERE pm.is_active = true';
+    if (practice) {
+      whereClause += ' AND pm.practice = $1';
+      params.push(practice);
+    }
+
     const result = await pool.query(`
       SELECT 
         pm.name,
@@ -349,9 +356,9 @@ export class StatisticsService {
           ELSE 'Critical'
         END as capacity_status
       FROM people_managers pm
-      WHERE pm.is_active = true
+      ${whereClause}
       ORDER BY utilization_percent DESC
-    `);
+    `, params);
     
     return result.rows;
   }
