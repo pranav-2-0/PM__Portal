@@ -829,13 +829,13 @@ export const pmApi = createApi({
     }),
     getFilteredEmployeesForSkillUpdate: builder.query<
       { data: any[]; totalCount: number },
-      { practice?: string; cu?: string; region?: string; grade?: string }
+      { practice?: string; cu?: string; region?: string; grade?: string; department_id?: number }
     >({
       query: (params = {}) => ({ url: '/employees/skills/preview', params }),
     }),
     bulkUpdateEmployeeSkills: builder.mutation<
       { message: string; updatedCount: number; skill: string; practice?: string | null },
-      { skill: string; practice?: string; cu?: string; region?: string; grade?: string }
+      { skill: string; practice?: string; cu?: string; region?: string; grade?: string; department_id?: number }
     >({
       async queryFn(body, _api, _extraOptions, fetchWithBQ) {
         // Primary route (current backend)
@@ -860,7 +860,7 @@ export const pmApi = createApi({
     }),
     removeEmployeeSkill: builder.mutation<
       { message: string; updatedCount: number },
-      { skill?: string; practice?: string; cu?: string; region?: string; grade?: string }
+      { skill?: string; practice?: string; cu?: string; region?: string; grade?: string; department_id?: number }
     >({
       query: (body) => ({ url: '/employees/skills/remove', method: 'POST', body }),
     }),

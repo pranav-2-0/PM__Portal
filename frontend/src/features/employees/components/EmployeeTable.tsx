@@ -1,4 +1,4 @@
-import { Users, Filter, Loader2, AlertCircle, Download, ChevronDown, ChevronUp, BarChart2, RefreshCcw, Trash2, Pencil, Check, X } from 'lucide-react';
+import { Users, Filter, Loader2, AlertCircle, Download, ChevronDown, ChevronUp, BarChart2, RefreshCcw, Trash2, Pencil, Check, X, Search } from 'lucide-react';
 import Pagination from '../../../components/Pagination';
 import { SkillGroupExport } from './SkillGroupExport';
 import { useViewModeOptimization } from '../hooks/useViewModeOptimization';
@@ -33,8 +33,8 @@ export function EmployeeTable({ benchOnly = false }: EmployeeTableProps) {
     { key: 'cu',              label: 'NEW BU' },
     { key: 'region',          label: 'Region' },
     { key: 'account',         label: 'Account' },
-    { key: 'skill',           label: 'Skill' },
-    { key: 'primary_skill',   label: 'Primary Skill' },
+    { key: 'skill',           label: 'Primary Skill' },
+    { key: 'primary_skill',   label: 'Updated Skill' },
     { key: 'email',           label: 'Email' },
     { key: 'status',          label: 'Status' },
     { key: 'current_pm_id',   label: 'PM Assignment' },
@@ -63,7 +63,7 @@ export function EmployeeTable({ benchOnly = false }: EmployeeTableProps) {
     { key: 'pm_max_capacity',     label: 'PM Max Capacity' },
   ];
 
-  const DEFAULT_COLS_ALL:   ColKey[] = ['employee_id','name','grade','practice','cu','region','account','skill','status','current_pm_id'];
+  const DEFAULT_COLS_ALL:   ColKey[] = ['employee_id','name','grade','practice','cu','region','account','skill','primary_skill','status','current_pm_id'];
   const DEFAULT_COLS_BENCH: ColKey[] = ['employee_id','name','grade','practice','cu','region','skill','bench_status'];
   
   const [page, setPage] = useState(1);
@@ -119,6 +119,32 @@ export function EmployeeTable({ benchOnly = false }: EmployeeTableProps) {
     { skip: viewMode === 'list' } // Only fetch when in skill or update-skills view mode
   );
 
+  // Grade options for Update Skills filters
+  const gradeOptions = useMemo(() => {
+    const gradeSet = new Set<string>();
+
+    // Prefer explicit grade list from filters endpoint if available
+    const filterGrades = (filterOpts as any)?.grades as string[] | undefined;
+    (filterGrades || []).forEach((g) => {
+      const grade = String(g || '').trim();
+      if (grade) gradeSet.add(grade);
+    });
+
+    // Fallback: derive from employee datasets
+    const source = [
+      ...((response?.data || []) as any[]),
+      ...((bulkResponse?.data || []) as any[]),
+    ];
+    source.forEach((emp) => {
+      const grade = String(emp?.grade || '').trim();
+      if (grade) gradeSet.add(grade);
+    });
+
+    return Array.from(gradeSet).sort((a, b) =>
+      a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
+    );
+  }, [filterOpts, response?.data, bulkResponse?.data]);
+
   // Use the right dataset based on view mode
   const activeResponse = viewMode === 'skill' || viewMode === 'update-skills' ? bulkResponse : response;
 
@@ -129,13 +155,14 @@ export function EmployeeTable({ benchOnly = false }: EmployeeTableProps) {
 
   // Preview data - only fetch when in update-skills view
   const hasFilters = updateFilters.practice || updateFilters.cu || updateFilters.region || updateFilters.grade;
+  const departmentScopedParams = isSuperAdmin && selectedDepartment ? { department_id: selectedDepartment } : {};
   const { data: filteredPreview, isFetching: previewLoading, refetch: refetchFilteredPreview } = useGetFilteredEmployeesForSkillUpdateQuery(
-    updateFilters,
+    { ...updateFilters, ...departmentScopedParams },
     { skip: !hasFilters || viewMode !== 'update-skills' } // Only fetch when in update-skills view and has filters
   );
   const hasRemoveFilters = removeFilters.skill || removeFilters.practice || removeFilters.cu || removeFilters.region || removeFilters.grade;
-  const { refetch: refetchRemovePreview } = useGetFilteredEmployeesForSkillUpdateQuery(
-    { practice: removeFilters.practice, cu: removeFilters.cu, region: removeFilters.region, grade: removeFilters.grade },
+  const { data: removeFilteredPreview, isFetching: removePreviewLoading, refetch: refetchRemovePreview } = useGetFilteredEmployeesForSkillUpdateQuery(
+    { practice: removeFilters.practice, cu: removeFilters.cu, region: removeFilters.region, grade: removeFilters.grade, ...departmentScopedParams },
     { skip: !hasRemoveFilters || viewMode !== 'update-skills' } // Only fetch when in update-skills view and has filters
   );
 
@@ -170,7 +197,9 @@ export function EmployeeTable({ benchOnly = false }: EmployeeTableProps) {
     const headers = activeCols.map(c => c.label);
     const rows = employees.map((emp: any) =>
       activeCols.map(c => {
-        const v = emp[c.key];
+        let v = emp[c.key];
+        if (c.key === 'skill') v = emp.primary_skill;
+        if (c.key === 'primary_skill') v = (emp.skill && emp.skill !== emp.primary_skill) ? emp.skill : '';
         if (c.key === 'current_pm_id') return v ? 'Assigned' : 'Unassigned';
         if (c.key === 'is_new_joiner' || c.key === 'is_frozen' || c.key === 'pm_is_active') return v ? 'Yes' : 'No';
         if (v === null || v === undefined) return '';
@@ -184,6 +213,57 @@ export function EmployeeTable({ benchOnly = false }: EmployeeTableProps) {
     const a    = document.createElement('a');
     a.href     = url;
     a.download = benchOnly ? 'bench_resources.csv' : 'employees.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportFilteredEmployeesToCSV = () => {
+    const rows = filteredPreview?.data || [];
+    if (!rows.length) return;
+
+    const headers = [
+      'Employee ID',
+      'Name',
+      'Grade',
+      'Practice',
+      'NEW BU',
+      'Region',
+      'Account',
+      'Primary Skill',
+      'Updated Skill',
+    ];
+
+    const csvRows = rows.map((emp: any) => {
+      const updatedSkill = emp.updated_skill ?? ((emp.skill && emp.skill !== emp.primary_skill) ? emp.skill : '');
+      const values = [
+        emp.employee_id,
+        emp.name,
+        emp.grade,
+        emp.practice,
+        emp.cu,
+        emp.region,
+        emp.account,
+        emp.primary_skill,
+        updatedSkill,
+      ];
+
+      return values
+        .map((v) => {
+          if (v === null || v === undefined) return '';
+          const s = String(v);
+          return s.includes(',') || s.includes('"') || s.includes('\n')
+            ? `"${s.replace(/"/g, '""')}"`
+            : s;
+        })
+        .join(',');
+    });
+
+    const csv = [headers.join(','), ...csvRows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `filtered_employees_${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -237,9 +317,14 @@ export function EmployeeTable({ benchOnly = false }: EmployeeTableProps) {
     return employeesBySkill.map(({ skill }) => skill).sort();
   }, [employeesBySkill]);
 
-  // Auto-select first skill if none selected
+  // Auto-select first skill if none selected or current selection is filtered out
   useEffect(() => {
-    if (viewMode === 'skill' && uniqueSkills.length > 0 && !selectedSkill) {
+    if (viewMode !== 'skill') return;
+    if (uniqueSkills.length === 0) {
+      setSelectedSkill(null);
+      return;
+    }
+    if (!selectedSkill || !uniqueSkills.includes(selectedSkill)) {
       setSelectedSkill(uniqueSkills[0]);
     }
   }, [viewMode, uniqueSkills, selectedSkill]);
@@ -257,7 +342,7 @@ export function EmployeeTable({ benchOnly = false }: EmployeeTableProps) {
     }
     try {
       const newSkill = updateSkill.trim();
-      const result = await doBulkUpdate({ skill: newSkill, ...updateFilters }).unwrap();
+      const result = await doBulkUpdate({ skill: newSkill, ...updateFilters, ...departmentScopedParams }).unwrap();
       if (!result?.updatedCount) {
         setSkillMsg({ type: 'error', text: 'No employees matched the selected filters. Nothing was updated.' });
         return;
@@ -275,18 +360,6 @@ export function EmployeeTable({ benchOnly = false }: EmployeeTableProps) {
       try { await refetchBulk(); } catch {}
 
       setUpdateSkill('');
-      setUpdateFilters({ practice: '', cu: '', region: '', grade: '' });
-      setPage(1);
-      forceViewModeChange('skill');
-      setSkillSearchQuery(newSkill);
-      setFilters({
-        status: 'active',
-        practice: '',
-        cu: '',
-        region: '',
-        grade: '',
-        skill: '',
-      });
     } catch (err: any) {
       setSkillMsg({ type: 'error', text: 'Update failed: ' + (err?.data?.message || err.message || 'Unknown error') });
     }
@@ -295,7 +368,7 @@ export function EmployeeTable({ benchOnly = false }: EmployeeTableProps) {
   // Handle skill removal (revert to primary skill)
   const handleRemoveSkill = async () => {
     try {
-      const result = await doRemoveSkill(removeFilters).unwrap();
+      const result = await doRemoveSkill({ ...removeFilters, ...departmentScopedParams }).unwrap();
       if (!result?.updatedCount) {
         setSkillMsg({ type: 'error', text: 'No employees matched the selected filters. Nothing was reverted.' });
         return;
@@ -630,6 +703,8 @@ export function EmployeeTable({ benchOnly = false }: EmployeeTableProps) {
                       } else if (col.key === 'is_new_joiner' || col.key === 'is_frozen' || col.key === 'pm_is_active') {
                         content = <span className="text-xs">{v ? 'Yes' : 'No'}</span>;
                       } else if (col.key === 'skill') {
+                        content = <span className="text-gray-700 text-xs">{emp.primary_skill || '—'}</span>;
+                      } else if (col.key === 'primary_skill') {
                         content = (
                           <div className="flex items-center gap-1 group">
                             {(emp.skill && emp.skill !== emp.primary_skill)
@@ -650,7 +725,7 @@ export function EmployeeTable({ benchOnly = false }: EmployeeTableProps) {
 
                       return (
                         <td key={col.key} className="px-4 py-3">
-                          {editingSkillId === emp.employee_id && col.key === 'skill' ? (
+                          {editingSkillId === emp.employee_id && col.key === 'primary_skill' ? (
                             <div className="flex items-center gap-1">
                               <input
                                 autoFocus
@@ -682,9 +757,21 @@ export function EmployeeTable({ benchOnly = false }: EmployeeTableProps) {
             {/* Skill Tabs */}
             {uniqueSkills.length > 0 && (
               <div className="bg-white rounded-lg shadow-sm p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <BarChart2 size={18} className="text-blue-600" />
-                  <h3 className="font-semibold text-gray-800">Select Skill</h3>
+                <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <BarChart2 size={18} className="text-blue-600" />
+                    <h3 className="font-semibold text-gray-800">Select Skill</h3>
+                  </div>
+                  <div className="relative w-full sm:w-64">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      value={skillSearchQuery}
+                      onChange={e => setSkillSearchQuery(e.target.value)}
+                      placeholder="Search skill"
+                      className="w-full border border-gray-300 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
                 </div>
                 <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
                   {uniqueSkills.map((skill) => {
@@ -711,6 +798,12 @@ export function EmployeeTable({ benchOnly = false }: EmployeeTableProps) {
                     );
                   })}
                 </div>
+              </div>
+            )}
+
+            {uniqueSkills.length === 0 && skillSearchQuery.trim() && (
+              <div className="bg-white rounded-lg shadow-sm p-6 text-center text-sm text-gray-500">
+                No skills found for "{skillSearchQuery}"
               </div>
             )}
 
@@ -863,18 +956,11 @@ export function EmployeeTable({ benchOnly = false }: EmployeeTableProps) {
 
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Practice (optional)</label>
-                      <select value={updateFilters.practice} onChange={e => setUpdateFilters(f => ({ ...f, practice: e.target.value }))}
-                        className={`${selectCls} w-full`}>
-                        <option value="">All Practices</option>
-                        {(filterOpts?.practices || []).map(p => <option key={p} value={p}>{p}</option>)}
-                      </select>
-                    </div>
-                    <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">Grade (optional)</label>
                       <select value={updateFilters.grade} onChange={e => setUpdateFilters(f => ({ ...f, grade: e.target.value }))}
                         className={`${selectCls} w-full`}>
                         <option value="">All Grades</option>
+                        {gradeOptions.map(g => <option key={g} value={g}>{g}</option>)}
                       </select>
                     </div>
                     <div>
@@ -935,18 +1021,27 @@ export function EmployeeTable({ benchOnly = false }: EmployeeTableProps) {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Practice</label>
-                      <select value={removeFilters.practice} onChange={e => setRemoveFilters(f => ({ ...f, practice: e.target.value }))}
-                        className={`${selectCls} w-full`}>
-                        <option value="">All Practices</option>
-                        {(filterOpts?.practices || []).map(p => <option key={p} value={p}>{p}</option>)}
-                      </select>
-                    </div>
-                    <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">Grade</label>
                       <select value={removeFilters.grade} onChange={e => setRemoveFilters(f => ({ ...f, grade: e.target.value }))}
                         className={`${selectCls} w-full`}>
                         <option value="">All Grades</option>
+                        {gradeOptions.map(g => <option key={g} value={g}>{g}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">NEW BU</label>
+                      <select value={removeFilters.cu} onChange={e => setRemoveFilters(f => ({ ...f, cu: e.target.value }))}
+                        className={`${selectCls} w-full`}>
+                        <option value="">All NEW BUs</option>
+                        {(filterOpts?.cus || []).map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Region</label>
+                      <select value={removeFilters.region} onChange={e => setRemoveFilters(f => ({ ...f, region: e.target.value }))}
+                        className={`${selectCls} w-full`}>
+                        <option value="">All Regions</option>
+                        {(filterOpts?.regions || []).map(r => <option key={r} value={r}>{r}</option>)}
                       </select>
                     </div>
                   </div>
@@ -966,9 +1061,20 @@ export function EmployeeTable({ benchOnly = false }: EmployeeTableProps) {
             {/* Filtered Employees Data */}
             {hasFilters && filteredPreview && (
               <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-                <div className="p-4 border-b border-gray-100">
-                  <h4 className="font-semibold text-gray-800">Filtered Employees ({filteredPreview.totalCount})</h4>
-                  <p className="text-sm text-gray-600 mt-1">Employees matching the update filters above</p>
+                <div className="p-4 border-b border-gray-100 flex items-start justify-between gap-3">
+                  <div>
+                    <h4 className="font-semibold text-gray-800">Filtered Employees ({filteredPreview.totalCount})</h4>
+                    <p className="text-sm text-gray-600 mt-1">Employees matching the update filters above</p>
+                  </div>
+                  <button
+                    onClick={exportFilteredEmployeesToCSV}
+                    disabled={!filteredPreview?.data?.length}
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{ backgroundColor: '#0070AD' }}
+                  >
+                    <Download size={14} />
+                    Export
+                  </button>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
@@ -992,6 +1098,85 @@ export function EmployeeTable({ benchOnly = false }: EmployeeTableProps) {
                               content = <span className="text-gray-400 font-mono text-xs">{v}</span>;
                             } else if (col.key === 'grade') {
                               content = <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-bold">{v}</span>;
+                            } else if (col.key === 'skill') {
+                              content = <span className="text-gray-700 text-xs">{emp.primary_skill || '—'}</span>;
+                            } else if (col.key === 'primary_skill') {
+                              content = (
+                                <span className="text-gray-700 text-xs">
+                                  {(emp.skill && emp.skill !== emp.primary_skill) ? emp.skill : '—'}
+                                </span>
+                              );
+                            } else if (col.key === 'status') {
+                              content = (
+                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                  v === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                                }`}>
+                                  {v || 'active'}
+                                </span>
+                              );
+                            } else if (col.key === 'current_pm_id') {
+                              content = v ? <span className="text-green-600 font-medium text-xs">Assigned</span> : <span className="text-orange-500 text-xs">Unassigned</span>;
+                            } else if (col.key === 'is_new_joiner' || col.key === 'is_frozen' || col.key === 'pm_is_active') {
+                              content = <span className="text-xs">{v ? 'Yes' : 'No'}</span>;
+                            } else {
+                              content = <span className="text-gray-700 text-xs">{v || '—'}</span>;
+                            }
+
+                            return (
+                              <td key={col.key} className="px-4 py-3">
+                                {content}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Filtered Employees Data (Remove Updated Skill) */}
+            {hasRemoveFilters && removeFilteredPreview && (
+              <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+                <div className="p-4 border-b border-gray-100">
+                  <h4 className="font-semibold text-gray-800">Filtered Employees for Remove Updated Skill ({removeFilteredPreview.totalCount})</h4>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {removePreviewLoading
+                      ? 'Loading employees matching the remove filters...'
+                      : 'Employees matching the remove filters above'}
+                  </p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-gray-200">
+                        {ALL_COLUMNS.filter(c => visibleCols.includes(c.key)).map(col => (
+                          <th key={col.key} className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">
+                            {col.label}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {removeFilteredPreview.data?.map((emp: any) => (
+                        <tr key={`remove-${emp.employee_id}`} className="border-b border-gray-100 hover:bg-gray-50">
+                          {ALL_COLUMNS.filter(c => visibleCols.includes(c.key)).map(col => {
+                            const v = emp[col.key];
+                            let content: any = '';
+
+                            if (col.key === 'employee_id') {
+                              content = <span className="text-gray-400 font-mono text-xs">{v}</span>;
+                            } else if (col.key === 'grade') {
+                              content = <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-bold">{v}</span>;
+                            } else if (col.key === 'skill') {
+                              content = <span className="text-gray-700 text-xs">{emp.primary_skill || '—'}</span>;
+                            } else if (col.key === 'primary_skill') {
+                              content = (
+                                <span className="text-gray-700 text-xs">
+                                  {(emp.skill && emp.skill !== emp.primary_skill) ? emp.skill : '—'}
+                                </span>
+                              );
                             } else if (col.key === 'status') {
                               content = (
                                 <span className={`px-2 py-0.5 rounded text-xs font-medium ${

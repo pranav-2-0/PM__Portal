@@ -10333,14 +10333,22 @@ export const getDiscrepancyHistory = async (req: Request, res: Response) => {
 
 export const getFilteredEmployeesForSkillUpdate = async (req: Request, res: Response) => {
   try {
-    const { practice, cu, region, grade } = req.query as Record<string, string>;
+    const { practice, cu, region, grade, department_id } = req.query as Record<string, string>;
+    const user = (req as any).user;
+    const isSuperAdmin = user?.role === 'Super Admin';
+
+    let effectivePractice = practice;
+    if (isSuperAdmin && department_id) {
+      const deptResult = await pool.query('SELECT name FROM departments WHERE id = $1', [department_id]);
+      effectivePractice = deptResult.rows?.[0]?.name || '';
+    }
 
     // Skill-management scope: all active employees
     let whereClause = `WHERE status = 'active'`;
     const params: any[] = [];
     let idx = 1;
 
-    if (practice && practice !== 'All') { whereClause += ` AND practice = $${idx}`; params.push(practice); idx++; }
+    if (effectivePractice && effectivePractice !== 'All') { whereClause += ` AND practice = $${idx}`; params.push(effectivePractice); idx++; }
     if (cu      && cu      !== 'All') { whereClause += ` AND cu = $${idx}`;       params.push(cu);       idx++; }
     if (region  && region  !== 'All') { whereClause += ` AND region = $${idx}`;   params.push(region);   idx++; }
     if (grade)                         { whereClause += ` AND grade = $${idx}`;    params.push(grade);    idx++; }
@@ -10358,6 +10366,7 @@ export const getFilteredEmployeesForSkillUpdate = async (req: Request, res: Resp
               practice,
               cu,
               region,
+              account,
               skill,
               primary_skill,
               CASE
@@ -10471,7 +10480,15 @@ export const getEmployeeSkillDistribution = async (req: Request, res: Response) 
 
 export const bulkUpdateEmployeeSkills = async (req: Request, res: Response) => {
   try {
-    const { skill, practice, cu, region, grade } = req.body as Record<string, string>;
+    const { skill, practice, cu, region, grade, department_id } = req.body as Record<string, string>;
+    const user = (req as any).user;
+    const isSuperAdmin = user?.role === 'Super Admin';
+
+    let effectivePractice = practice;
+    if (isSuperAdmin && department_id) {
+      const deptResult = await pool.query('SELECT name FROM departments WHERE id = $1', [department_id]);
+      effectivePractice = deptResult.rows?.[0]?.name || '';
+    }
 
     if (!skill || !skill.trim()) {
       return res.status(400).json({ error: 'skill is required' });
@@ -10493,7 +10510,7 @@ export const bulkUpdateEmployeeSkills = async (req: Request, res: Response) => {
     const params: any[] = [skill.trim()];
     let idx = 2;
 
-    if (practice && practice !== 'All') { whereClause += ` AND practice = $${idx}`; params.push(practice); idx++; }
+    if (effectivePractice && effectivePractice !== 'All') { whereClause += ` AND practice = $${idx}`; params.push(effectivePractice); idx++; }
     if (cu      && cu      !== 'All') { whereClause += ` AND cu = $${idx}`;       params.push(cu);       idx++; }
     if (region  && region  !== 'All') { whereClause += ` AND region = $${idx}`;   params.push(region);   idx++; }
     if (grade)                         { whereClause += ` AND grade = $${idx}`;    params.push(grade);    idx++; }
@@ -10556,7 +10573,15 @@ export const updateSingleEmployeeSkill = async (req: Request, res: Response) => 
 
 export const removeEmployeeSkill = async (req: Request, res: Response) => {
   try {
-    const { skill, practice, cu, region, grade } = req.body as Record<string, string>;
+    const { skill, practice, cu, region, grade, department_id } = req.body as Record<string, string>;
+    const user = (req as any).user;
+    const isSuperAdmin = user?.role === 'Super Admin';
+
+    let effectivePractice = practice;
+    if (isSuperAdmin && department_id) {
+      const deptResult = await pool.query('SELECT name FROM departments WHERE id = $1', [department_id]);
+      effectivePractice = deptResult.rows?.[0]?.name || '';
+    }
 
     // Revert within all active employees scope
     let whereClause = `WHERE status = 'active'`;
@@ -10564,7 +10589,7 @@ export const removeEmployeeSkill = async (req: Request, res: Response) => {
     let idx = 1;
 
     if (skill)                         { whereClause += ` AND skill = $${idx}`;    params.push(skill);    idx++; }
-    if (practice && practice !== 'All') { whereClause += ` AND practice = $${idx}`; params.push(practice); idx++; }
+    if (effectivePractice && effectivePractice !== 'All') { whereClause += ` AND practice = $${idx}`; params.push(effectivePractice); idx++; }
     if (cu      && cu      !== 'All') { whereClause += ` AND cu = $${idx}`;       params.push(cu);       idx++; }
     if (region  && region  !== 'All') { whereClause += ` AND region = $${idx}`;   params.push(region);   idx++; }
     if (grade)                         { whereClause += ` AND grade = $${idx}`;    params.push(grade);    idx++; }

@@ -16,12 +16,23 @@ export function SkillGroupExport({ skillName, rows, columns, isLoading = false }
     if (!rows.length) return;
 
     // Prepare headers
-    const headers = columns.map(c => c.label);
+    const headers = columns.map(c => {
+      if (c.key === 'skill') return 'Primary Skill';
+      return c.label;
+    });
 
     // Prepare rows with proper CSV formatting
     const csvRows = rows.map(row =>
       columns.map(col => {
-        const value = row[col.key];
+        let value = row[col.key];
+
+        if (col.key === 'skill') {
+          value = row.primary_skill;
+        }
+
+        if (col.key === 'primary_skill') {
+          value = (row.skill && row.skill !== row.primary_skill) ? row.skill : '';
+        }
 
         // Handle boolean values
         if (col.key === 'is_new_joiner' || col.key === 'is_frozen' || col.key === 'pm_is_active') {

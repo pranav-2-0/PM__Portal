@@ -91,7 +91,7 @@ export const COLUMN_MAPPINGS = {
     cu: 'NEW BU',
     region: 'Region',
     account: 'Account',
-    skill: 'Skill',
+    skill: 'Primary Skill',
     primary_skill: 'Primary Skill',
     status: 'Status',
     current_pm_id: 'PM Assignment',
